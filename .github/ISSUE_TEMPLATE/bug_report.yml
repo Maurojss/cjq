@@ -1,0 +1,53 @@
+name: Bug report
+description: Something behaves differently from the documentation
+title: "[bug] "
+labels: ["bug"]
+body:
+  - type: markdown
+    attributes:
+      value: |
+        Thanks for the report. Please reduce the problem to the smallest input
+        and command line you can — that makes a fix much faster.
+  - type: textarea
+    id: command
+    attributes:
+      label: Command and input
+      description: The exact cjq invocation and the JSON/query involved.
+      render: shell
+    validations:
+      required: true
+  - type: textarea
+    id: expected
+    attributes:
+      label: Expected output
+    validations:
+      required: true
+  - type: textarea
+    id: actual
+    attributes:
+      label: Actual output
+      description: Include the exit status and any stderr message.
+    validations:
+      required: true
+  - type: input
+    id: version
+    attributes:
+      label: cjq version
+      description: Output of `cjq --version`.
+      placeholder: cjq 1.1.0
+    validations:
+      required: true
+  - type: input
+    id: platform
+    attributes:
+      label: Platform and compiler
+      placeholder: Ubuntu 24.04, gcc 13.2
+    validations:
+      required: true
+  - type: textarea
+    id: extra
+    attributes:
+      label: Anything else?
+      description: Sanitizer output, related issues, workarounds.
+    validations:
+      required: false

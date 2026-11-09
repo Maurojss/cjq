@@ -1,0 +1,232 @@
+.Dd November 8, 2026
+.Dt CJQ 1
+.Os
+.Sh NAME
+.Nm cjq
+.Nd query JSON from the shell
+.Sh SYNOPSIS
+.Nm
+.Op Ar flags
+.Ar query
+.Op Ar file
+.Sh DESCRIPTION
+.Nm
+reads one JSON value from
+.Ar file
+or standard input, applies
+.Ar query
+and writes each result to standard output.
+Results are pretty-printed unless
+.Fl c
+is given; colors are used when standard output is a terminal.
+.Pp
+The query language is a path expression rooted at
+.Ql $ :
+.Pp
+.Bl -tag -width Ds -compact
+.It Ic $.a.b
+object member access
+.It Ic $.a[2]
+array item, zero based
+.It Ic $.a[-1]
+item counted from the end
+.It Ic $.a[1:3]
+slice, end exclusive; either bound may be omitted
+.It Ic $."two words"
+quoted member name
+.It Ic $.a[*] No or Ic $.a[]
+every item of an array or every value of an object
+.It Ic $.a?
+optional step: a miss prints
+.Dv null
+instead of nothing
+.It Ic $..uid
+every member named
+.Ql uid
+at any depth
+.It Ic $.a, $.b
+print both expressions, in order
+.It Ic $.age > 21
+comparison with
+.Ic == , != , < , <= , >
+or
+.Ic >=
+.It Ic $.ok and $.age > 21
+boolean operators
+.Ic and
+and
+.Ic or
+(the former binds tighter)
+.It Ic $.a | length()
+pipe results into a builtin call
+.El
+.Pp
+Builtins:
+.Ql length() ,
+.Ql keys() ,
+.Ql values() ,
+.Ql type() ,
+.Ql has("key") ,
+.Ql select(cond) ,
+.Ql map(expr) ,
+.Ql add() ,
+.Ql contains(x) ,
+.Ql startswith(s) ,
+.Ql endswith(s) ,
+.Ql join(sep) ,
+.Ql split(sep) ,
+.Ql unique() ,
+.Ql group_by(expr) ,
+.Ql flatten() ,
+.Ql to_entries() ,
+.Ql from_entries() ,
+.Ql reverse() ,
+.Ql test(regex) ,
+.Ql sort(field?) ,
+.Ql max(field?) ,
+.Ql min(field?) ,
+.Ql sum(field?) ,
+.Ql first() ,
+.Ql last() ,
+.Ql floor() ,
+.Ql ceil() ,
+.Ql abs() ,
+.Ql sqrt() ,
+.Ql ftos() ,
+.Ql not() .
+.Pp
+.Ql test()
+uses POSIX extended regular expressions.
+An invalid pattern produces no result.
+.Pp
+Values
+.Dv null ,
+.Dv false ,
+.Dv 0 ,
+.Dv \&"" ,
+.Dv []
+and
+.Dv {}
+are falsy.
+.Pp
+Comparisons are scalar:
+.Ic ==
+and
+.Ic !=
+are deep equality, while
+.Ic < , <= , >
+and
+.Ic >=
+order by type and then by value.
+A comparison with a missing operand produces no result.
+.Pp
+.Ic and
+and
+.Ic or
+combine truthiness values;
+.Ic and
+binds tighter than
+.Ic or .
+Both bind looser than comparisons and tighter than pipes.
+.Sh OPTIONS
+.Bl -tag -width Ds
+.It Fl c , Fl -compact
+Print compact JSON, one line per result, without spaces.
+.It Fl r , Fl -raw
+Print string results without quotes.
+.It Fl j , Fl -join-output
+Do not write a newline after each result.
+.It Fl a , Fl -ascii-output
+Escape bytes outside ASCII as
+.Ql \euXXXX ,
+using surrogate pairs for code points above U+FFFF.
+.It Fl s , Fl -slurp
+Read every whitespace-separated JSON value and present them as one array.
+.It Fl e , Fl -exit-status
+Exit 1 when the result is falsy or empty, 0 otherwise.
+.It Fl n , Fl -null-input
+Run the query against
+.Dv null
+and do not read input.
+.It Fl C , Fl -color
+Colorize the output even when stdout is not a terminal.
+.It Fl M , Fl -no-color , Fl -monochrome
+Never colorize.  The environment variable
+.Ev CJQ_NO_COLOR
+has the same effect.
+.It Fl -indent Ar n
+Indent pretty output with
+.Ar n
+spaces, where
+.Ar n
+is between 0 and 8.
+.It Fl -tab
+Indent pretty output with one tab.
+.It Fl S , Fl -sort-keys
+Sort object members by key in the output.
+.It Fl f , Fl -from-file Ar file
+Read the query from
+.Ar file
+instead of the query argument; the remaining positional argument is the
+input file.
+.It Fl h , Fl -help
+Print usage information.
+.It Fl v , Fl -version
+Print the version.
+.El
+.Sh ENVIRONMENT
+.Bl -tag -width CJQ_NO_COLOR
+.It Ev CJQ_NO_COLOR
+Any value disables colored output.
+.El
+.Sh EXIT STATUS
+.Bl -tag -width Ds -compact
+.It 0
+Success (truthy result under
+.Fl e ) .
+.It 1
+Falsy or empty result while
+.Fl e
+is active.
+.It 2
+Usage error (unknown flag, missing query or bad option value).
+.It 3
+The input is not valid JSON, or contains trailing data.
+.It 4
+The query does not parse, or names an unknown builtin or wrong arity.
+.El
+.Sh EXAMPLES
+Extract one field:
+.Bd -literal -offset indent
+$ echo '{"status":"ok"}' | cjq \&'$.status'
+"ok"
+.Ed
+.Pp
+Print raw strings, one per line:
+.Bd -literal -offset indent
+$ cjq -r \&'$.users[*].name' users.json
+.Ed
+.Pp
+Use as a script test:
+.Bd -literal -offset indent
+if echo "$response" | cjq -e \&'$.ok'; then
+	echo healthy
+fi
+.Ed
+.Pp
+Summarize a list:
+.Bd -literal -offset indent
+$ curl -s https://api.example.dev/orders | cjq -r \e
+	\&'$.data | sum(.total)'
+.Ed
+.Pp
+Filter and transform:
+.Bd -literal -offset indent
+$ cjq -r \&'$.users | select(.age > 21) | map(.name)' users.json
+.Ed
+.Sh SEE ALSO
+.Xr jq 1
+.Sh AUTHORS
+.An mauroncfds Aq Mt mauroncfds@users.noreply.github.com
+.Sh LICENSE
+MIT.

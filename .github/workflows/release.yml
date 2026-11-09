@@ -1,0 +1,39 @@
+name: Release
+
+on:
+  push:
+    tags:
+      - "v*"
+  workflow_dispatch:
+
+permissions:
+  contents: write
+
+jobs:
+  release:
+    name: build + publish (${{ matrix.target }})
+    strategy:
+      fail-fast: false
+      matrix:
+        include:
+          - os: ubuntu-latest
+            target: linux-x86_64
+            cc: gcc
+          - os: macos-latest
+            target: macos-arm64
+            cc: clang
+    runs-on: ${{ matrix.os }}
+    steps:
+      - uses: actions/checkout@v4
+      - name: Build and test
+        run: make CC=${{ matrix.cc }} CFLAGS='-std=c11 -O2 -Wall -Wextra -Wpedantic -Werror' test
+      - name: Package
+        run: |
+          mkdir -p dist
+          tar -czf "dist/cjq-${GITHUB_REF_NAME}-${{ matrix.target }}.tar.gz" \
+            cjq man/cjq.1 completions README.md LICENSE
+      - name: Publish
+        uses: softprops/action-gh-release@v2
+        with:
+          files: dist/*.tar.gz
+          generate_release_notes: true

@@ -1,0 +1,12 @@
+build/
+obj/
+tests/unit
+compile_commands.json
+.cache/
+*.o
+*.a
+cjq
+.vimspector.json
+.ycm_extra_conf.py
+.glQueryable
+compile_flags.txt

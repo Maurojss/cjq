@@ -1,0 +1,20 @@
+#compdef cjq
+
+_arguments -s -S \
+  '(-c --compact)'{-c,--compact}'[print compact JSON, one line, no spaces]' \
+  '(-r --raw)'{-r,--raw}'[print string results without quotes]' \
+  '(-j --join-output)'{-j,--join-output}'[do not print a newline after each result]' \
+  '(-a --ascii-output)'{-a,--ascii-output}'[escape non-ASCII characters as \uXXXX]' \
+  '(-s --slurp)'{-s,--slurp}'[gather every JSON value into one array]' \
+  '(-e --exit-status)'{-e,--exit-status}'[exit 1 when the result is falsy or empty]' \
+  '(-n --null-input)'{-n,--null-input}'[run the query against null, read no input]' \
+  '(-C --color)'{-C,--color}'[force colors even when piped]' \
+  '(-M --monochrome --no-color)'{-M,--monochrome,--no-color}'[never use colors]' \
+  '--indent=[spaces per indentation level]:spaces:(0 1 2 3 4 5 6 7 8)' \
+  '--tab[indent with one tab]' \
+  '(-S --sort-keys)'{-S,--sort-keys}'[sort object keys in the output]' \
+  '(-f --from-file)'{-f,--from-file}'[read the query from a file]:query file:_files' \
+  '(-h --help)'{-h,--help}'[show help]' \
+  '(-v --version)'{-v,--version}'[show version]' \
+  '1:query:' \
+  '2:file:_files'

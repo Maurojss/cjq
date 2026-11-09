@@ -1,0 +1,40 @@
+name: Feature request
+description: Suggest a builtin, flag or language feature
+title: "[feature] "
+labels: ["enhancement"]
+body:
+  - type: markdown
+    attributes:
+      value: |
+        `cjq` is intentionally a small tool. Explain the shell problem you are
+        trying to solve; a concrete pipeline is the best argument for a new
+        feature.
+  - type: textarea
+    id: problem
+    attributes:
+      label: The problem
+      description: What are you trying to do, and what makes it awkward today?
+    validations:
+      required: true
+  - type: textarea
+    id: proposal
+    attributes:
+      label: Proposed syntax or flag
+      description: Show the query you would like to write and its output.
+      render: shell
+    validations:
+      required: true
+  - type: textarea
+    id: alternatives
+    attributes:
+      label: Alternatives considered
+      description: Existing builtins, another tool, or a workaround.
+    validations:
+      required: false
+  - type: checkboxes
+    id: scope
+    attributes:
+      label: Scope
+      options:
+        - label: This can be implemented without adding a dependency
+          required: true

@@ -1,0 +1,79 @@
+name: CI
+
+on:
+  push:
+    branches: [main]
+  pull_request:
+  workflow_dispatch:
+
+jobs:
+  make:
+    name: make + tests (${{ matrix.os }})
+    strategy:
+      fail-fast: false
+      matrix:
+        os: [ubuntu-latest, macos-latest]
+    runs-on: ${{ matrix.os }}
+    steps:
+      - uses: actions/checkout@v4
+      - name: Build and test (warnings are errors)
+        run: make CFLAGS='-std=c11 -Wall -Wextra -Wpedantic -Werror -O2' test
+
+  clang:
+    name: clang + tests
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - name: Build and test with clang
+        run: make CC=clang CFLAGS='-std=c11 -Wall -Wextra -Wpedantic -Werror -O2' test
+
+  sanitizers:
+    name: ASan + UBSan
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - name: Sanitizer run
+        run: make sanitizer
+
+  cmake:
+    name: CMake + CTest
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - name: Configure
+        run: cmake -S . -B build -DCMAKE_BUILD_TYPE=Release -DCMAKE_C_FLAGS=-Werror
+      - name: Build
+        run: cmake --build build
+      - name: Test
+        run: ctest --test-dir build --output-on-failure
+
+  docs:
+    name: docs + completions
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - name: Install tools
+        run: sudo apt-get update && sudo apt-get install -y groff zsh fish
+      - name: Render the man page
+        run: groff -mdoc -Tutf8 -ww man/cjq.1 > /dev/null
+      - name: Check test script syntax
+        run: sh -n tests/run_tests.sh
+      - name: Check completion syntax
+        run: |
+          bash -n completions/cjq.bash
+          zsh -n completions/_cjq
+          fish --no-execute completions/cjq.fish
+
+  install:
+    name: install target
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - name: Install to a prefix
+        run: make PREFIX="$RUNNER_TEMP/cjq" install
+      - name: Smoke test
+        run: |
+          echo '{"ok":true}' | "$RUNNER_TEMP/cjq/bin/cjq" '$.ok'
+          "$RUNNER_TEMP/cjq/bin/cjq" --version
+          test -f "$RUNNER_TEMP/cjq/share/man/man1/cjq.1"
+          test -f "$RUNNER_TEMP/cjq/share/bash-completion/completions/cjq"
