@@ -2,6 +2,25 @@
 
 All notable changes to this project are documented in this file.
 
+## [1.3.0] - 2026-11-11
+
+### Added
+
+- `tostring()` converts any value to a string; non-strings use compact
+  JSON, matching `tojson()` without the extra quoting.
+- `tonumber()` parses a numeric string (surrounding blanks allowed) into
+  a number. Non-numeric values produce no result.
+- `ascii_downcase()` and `ascii_upcase()` change ASCII letters and leave
+  UTF-8 bytes untouched.
+- `ltrimstr(s)` and `rtrimstr(s)` remove a prefix or suffix when present
+  and return the input unchanged otherwise.
+- Unit and end-to-end coverage for all six builtins.
+
+### Changed
+
+- Version is now 1.3.0.
+- `--help`, the README and the manual page list the new builtins.
+
 ## [1.2.0] - 2026-11-09
 
 ### Added
@@ -15,7 +34,10 @@ All notable changes to this project are documented in this file.
   line becomes a string and the query runs once per line; with `-s` the
   whole input becomes one string. A trailing carriage return is removed
   from each line.
-- Unit and end-to-end coverage for variables and raw input.
+- `keys_unsorted()`, `min_by(expr)`, `max_by(expr)`, `fromjson()` and
+  `tojson()`, bringing the builtin set to 37.
+- Unit and end-to-end coverage for variables, raw input and the new
+  builtins.
 
 ### Changed
 
@@ -38,15 +60,13 @@ All notable changes to this project are documented in this file.
   type and then value.
 - Boolean operators `and` and `or`, with `and` binding tighter than `or`;
   both can be used inside `select()` and other builtin arguments.
-- 37 builtins: `length()`, `keys()`, `keys_unsorted()`, `values()`,
-  `type()`, `has(key)`, `select(cond)`, `map(expr)`, `add()`,
-  `contains(x)`, `startswith(s)`, `endswith(s)`, `join(sep)`,
-  `split(sep)`, `unique()`, `group_by(expr)`, `flatten()`,
-  `to_entries()`, `from_entries()`, `reverse()`, `test(regex)`,
-  `fromjson()`, `tojson()`, `sort(field?)`, `max(field?)`,
-  `min(field?)`, `max_by(expr)`, `min_by(expr)`, `sum(field?)`,
-  `first()`, `last()`, `floor()`, `ceil()`, `abs()`, `sqrt()`,
-  `ftos()` and `not()`. `test()` uses POSIX extended regular
+- 32 builtins: `length()`, `keys()`, `values()`, `type()`, `has(key)`,
+  `select(cond)`, `map(expr)`, `add()`, `contains(x)`, `startswith(s)`,
+  `endswith(s)`, `join(sep)`, `split(sep)`, `unique()`, `group_by(expr)`,
+  `flatten()`, `to_entries()`, `from_entries()`, `reverse()`,
+  `test(regex)`, `sort(field?)`, `max(field?)`, `min(field?)`,
+  `sum(field?)`, `first()`, `last()`, `floor()`, `ceil()`, `abs()`,
+  `sqrt()`, `ftos()` and `not()`. `test()` uses POSIX extended regular
   expressions.
 - CLI options `-c`, `-r`, `-j`, `-a`, `-s`, `-e`, `-n`, `-C`, `-M`,
   `-S`, `-f`, `-h`, `-v` (also as long names `--compact`, `--raw`,

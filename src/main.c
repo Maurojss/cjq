@@ -14,7 +14,7 @@
 #include <string.h>
 #include <unistd.h>
 
-#define CJQ_VERSION "1.2.0"
+#define CJQ_VERSION "1.3.0"
 
 #define EXIT_OK 0
 #define EXIT_FALSY 1
@@ -96,6 +96,8 @@ static void print_help(FILE *out)
         "          flatten() to_entries() from_entries() reverse() test(regex)\n"
         "          sort(field) max(field) min(field) sum(field)\n"
         "          min_by(expr) max_by(expr) fromjson() tojson()\n"
+        "          tostring() tonumber() ascii_downcase() ascii_upcase()\n"
+        "          ltrimstr(s) rtrimstr(s)\n"
         "          first() last() floor() ceil() abs() sqrt() ftos() not()\n"
         "\n"
         "exit status: 0 success; 1 falsy result with -e; 2 usage error;\n"

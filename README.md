@@ -32,7 +32,7 @@ $ curl -s https://api.example.dev/orders \
 | Runtime deps | libc + libm | libc + oniguruma (usually) |
 | Learning curve | small, path-oriented | large (full functional language) |
 | Startup time | µs | ms |
-| Query features | paths, slices, wildcards, comparisons, booleans, 37 builtins | everything, including modules |
+| Query features | paths, slices, wildcards, comparisons, booleans, 43 builtins | everything, including modules |
 
 If you already love jq's full language, use jq. cjq is for the 90% case: read
 a value, maybe walk an array, print it — with zero ceremony.
@@ -92,6 +92,16 @@ $ echo '{"b":2,"a":1}' | ./cjq -S -c '$'
 # POSIX extended regex test
 $ echo '"release-1.2.3"' | ./cjq -r '$. | test("^release-[0-9.]+$")'
 true
+
+# convert values to strings, or numeric strings to numbers
+$ echo '[1,"two",null]' | ./cjq -c '$. | map(tostring())'
+["1","two","null"]
+$ echo '" 42 "' | ./cjq -c '$. | tonumber()'
+42
+
+# strip a known prefix or suffix
+$ echo '"v1.2.3"' | ./cjq -r '$. | ltrimstr("v")'
+1.2.3
 
 # walk an array
 $ echo '{"users":[{"name":"Ada"},{"name":"Linus"}]}' | ./cjq -r '$.users[*].name'
@@ -219,6 +229,10 @@ Notes on corner cases, by design:
 | `first()` / `last()` | first/last array item |
 | `floor()` `ceil()` `abs()` `sqrt()` | math on numbers |
 | `ftos()` | number → string |
+| `tostring()` | any value → string (compact JSON for non-strings) |
+| `tonumber()` | numeric string → number; anything else produces no result |
+| `ascii_downcase()` / `ascii_upcase()` | change ASCII letters only |
+| `ltrimstr(s)` / `rtrimstr(s)` | remove a prefix/suffix if present |
 | `not()` | truthiness negation |
 
 **Truthiness:** `null`, `false`, `0`, `""`, `[]` and `{}` are falsy; everything
@@ -318,6 +332,7 @@ checks that deep nesting is rejected instead of overflowing the stack.
 - [x] `-S/--sort-keys` and `-f/--from-file`
 - [x] `--arg` / `--argjson` variables and `$name`
 - [x] `-R/--raw-input` line-oriented text mode
+- [x] `tostring()`, `tonumber()`, `ascii_downcase()`, `ascii_upcase()`, `ltrimstr()`, `rtrimstr()`
 - [x] random-input stress tests for the JSON parser
 - [x] tagged releases with Linux and macOS binaries
 

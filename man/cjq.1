@@ -1,4 +1,4 @@
-.Dd November 9, 2026
+.Dd November 11, 2026
 .Dt CJQ 1
 .Os
 .Sh NAME
@@ -95,6 +95,12 @@ Builtins:
 .Ql min(field?) ,
 .Ql max_by(expr) ,
 .Ql min_by(expr) ,
+.Ql tostring() ,
+.Ql tonumber() ,
+.Ql ascii_downcase() ,
+.Ql ascii_upcase() ,
+.Ql ltrimstr(s) ,
+.Ql rtrimstr(s) ,
 .Ql sum(field?) ,
 .Ql first() ,
 .Ql last() ,
@@ -258,6 +264,12 @@ Pass a shell value into a query:
 .Bd -literal -offset indent
 $ cjq -n --arg name Ada \&'$name'
 "Ada"
+.Ed
+.Pp
+Convert a numeric string to a number:
+.Bd -literal -offset indent
+$ echo '" 42 "' | cjq -c \&'$. | tonumber()'
+42
 .Ed
 .Pp
 Read lines of text instead of JSON:

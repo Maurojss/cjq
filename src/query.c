@@ -278,10 +278,12 @@ static int builtin_kind(const char *name)
         "length", "values", "type", "first", "last", "add",
         "floor", "ceil", "abs", "sqrt", "ftos", "not",
         "unique", "flatten", "to_entries", "from_entries", "reverse",
-        "keys_unsorted", "fromjson", "tojson", NULL};
+        "keys_unsorted", "fromjson", "tojson", "tostring", "tonumber",
+        "ascii_downcase", "ascii_upcase", NULL};
     static const char *const required[] = {
         "has", "select", "map", "contains", "startswith", "endswith", "join",
-        "split", "group_by", "test", "min_by", "max_by", NULL};
+        "split", "group_by", "test", "min_by", "max_by", "ltrimstr",
+        "rtrimstr", NULL};
     static const char *const optional[] = {"keys", "sort", "max", "min", "sum",
                                            NULL};
 
@@ -1255,6 +1257,37 @@ static void flatten_into(json_value *out, const json_value *v)
     }
 }
 
+/* Copy s, changing only ASCII letters.  UTF-8 bytes are left untouched. */
+static json_value *ascii_case_string(const char *s, int upper)
+{
+    size_t len = strlen(s);
+    char *out = xmalloc(len + 1);
+    for (size_t i = 0; i < len; ++i)
+    {
+        unsigned char c = (unsigned char)s[i];
+        if (upper && c >= 'a' && c <= 'z')
+            c = (unsigned char)(c - ('a' - 'A'));
+        else if (!upper && c >= 'A' && c <= 'Z')
+            c = (unsigned char)(c + ('a' - 'A'));
+        out[i] = (char)c;
+    }
+    out[len] = '\0';
+    json_value *v = json_string_new(out);
+    free(out);
+    return v;
+}
+
+/* Copy s without its first/last n bytes; n must not exceed strlen(s). */
+static json_value *string_slice(const char *s, size_t from, size_t len)
+{
+    char *out = xmalloc(len + 1);
+    memcpy(out, s + from, len);
+    out[len] = '\0';
+    json_value *v = json_string_new(out);
+    free(out);
+    return v;
+}
+
 /* Reverse UTF-8 code points without validating them: each leading byte
  * determines the chunk length, so valid text round-trips exactly. */
 static json_value *reverse_string(const char *s)
@@ -1823,6 +1856,74 @@ static void do_call(const hnode *call, json_value *val, results_t *outs)
         char buf[40];
         json_format_number(val->number, buf);
         results_push(outs, json_string_new(buf));
+        return;
+    }
+    if (strcmp(name, "tostring") == 0)
+    {
+        if (!val)
+            return;
+        if (val->kind == JSON_STRING)
+            results_push(outs, val);
+        else
+        {
+            json_value *s = json_value_to_string(val);
+            if (s)
+                results_push(outs, s);
+        }
+        return;
+    }
+    if (strcmp(name, "tonumber") == 0)
+    {
+        if (!val)
+            return;
+        if (val->kind == JSON_NUMBER)
+        {
+            results_push(outs, val);
+            return;
+        }
+        if (val->kind != JSON_STRING)
+            return;
+        json_value *n = parse_json_text(val->string);
+        if (n && n->kind == JSON_NUMBER)
+            results_push(outs, n);
+        return;
+    }
+    if (strcmp(name, "ascii_downcase") == 0 ||
+        strcmp(name, "ascii_upcase") == 0)
+    {
+        if (!val || val->kind != JSON_STRING)
+            return;
+        results_push(outs, ascii_case_string(val->string, name[6] == 'u'));
+        return;
+    }
+    if (strcmp(name, "ltrimstr") == 0 || strcmp(name, "rtrimstr") == 0)
+    {
+        if (!arg || !val || val->kind != JSON_STRING)
+            return;
+        json_value *needle = eval_first(arg, val);
+        if (!needle || needle->kind != JSON_STRING)
+            return;
+        size_t n = strlen(needle->string);
+        size_t m = strlen(val->string);
+        if (n > m)
+        {
+            results_push(outs, val);
+            return;
+        }
+        if (name[0] == 'l')
+        {
+            if (memcmp(val->string, needle->string, n) == 0)
+                results_push(outs, string_slice(val->string, n, m - n));
+            else
+                results_push(outs, val);
+        }
+        else
+        {
+            if (memcmp(val->string + (m - n), needle->string, n) == 0)
+                results_push(outs, string_slice(val->string, 0, m - n));
+            else
+                results_push(outs, val);
+        }
         return;
     }
     if (strcmp(name, "not") == 0)

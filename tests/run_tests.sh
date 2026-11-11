@@ -125,6 +125,17 @@ t max_by '$. | max_by(.v)' '[{"n":"a","v":3},{"n":"b","v":1}]' \
 t fromjson '$. | fromjson()' '"{\"a\":1}"' '{"a":1}' -c
 t fromjson_invalid '$. | fromjson()' '"nope"' '' -c
 t tojson '$. | tojson()' '{"a":[1,2]}' '"{\"a\":[1,2]}"' -c
+t tostring '$. | map(tostring())' '[1,"x",true,null]' \
+    '["1","x","true","null"]' -c
+t tonumber '$. | tonumber()' '"42"' '42' -c
+t tonumber_trim '$. | tonumber()' '" 3.5 "' '3.5' -c
+t tonumber_bad '$. | tonumber()' '"x"' '' -c
+t ascii_downcase '$. | ascii_downcase()' '"AbC"' '"abc"' -c
+t ascii_upcase '$. | ascii_upcase()' '"AbC"' '"ABC"' -c
+t ltrimstr '$. | ltrimstr("foo")' '"foobar"' '"bar"' -c
+t ltrimstr_miss '$. | ltrimstr("x")' '"foobar"' '"foobar"' -c
+t rtrimstr '$. | rtrimstr("bar")' '"foobar"' '"foo"' -c
+t rtrimstr_miss '$. | rtrimstr("x")' '"foobar"' '"foobar"' -c
 t sort_keys '$. ' '{"b":1,"a":2,"c":{"z":3,"y":4}}' \
     '{"a":2,"b":1,"c":{"y":4,"z":3}}' -S -c
 t ascii_output '$.s' '{"s":"caf\u00e9"}' '"caf\\u00e9"' -a -c
@@ -197,6 +208,12 @@ exit_code max_by_arity 4 '[]' "$BIN" '$. | max_by()'
 exit_code keys_unsorted_arity 4 '{}' "$BIN" '$. | keys_unsorted(1)'
 exit_code fromjson_arity 4 '""' "$BIN" '$. | fromjson(1)'
 exit_code tojson_arity 4 '{}' "$BIN" '$. | tojson(1)'
+exit_code tostring_arity 4 '{}' "$BIN" '$. | tostring(1)'
+exit_code tonumber_arity 4 '{}' "$BIN" '$. | tonumber(1)'
+exit_code ascii_downcase_arity 4 '{}' "$BIN" '$. | ascii_downcase(1)'
+exit_code ascii_upcase_arity 4 '{}' "$BIN" '$. | ascii_upcase(1)'
+exit_code ltrimstr_arity 4 '{}' "$BIN" '$. | ltrimstr()'
+exit_code rtrimstr_arity 4 '{}' "$BIN" '$. | rtrimstr()'
 exit_code missing_query_file 2 '{}' "$BIN" -f /nonexistent/cjq-query '$.a'
 exit_code bad_indent 2 '{}' "$BIN" --indent 9 '$'
 exit_code bad_indent_empty 2 '{}' "$BIN" --indent= '$'

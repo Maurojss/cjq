@@ -356,6 +356,12 @@ int main(void)
     check_format("tojson()", "tojson()");
     check_format("$who", "$who");
     check_format("$my_var", "$my_var");
+    check_format("tostring()", "tostring()");
+    check_format("tonumber()", "tonumber()");
+    check_format("ascii_downcase()", "ascii_downcase()");
+    check_format("ascii_upcase()", "ascii_upcase()");
+    check_format("ltrimstr(\"ab\")", "ltrimstr(\"ab\")");
+    check_format("rtrimstr(\"ab\")", "rtrimstr(\"ab\")");
 
     /* ---- query syntax errors ---- */
     check_query_fails("");
@@ -386,6 +392,12 @@ int main(void)
     check_query_fails("$.a | keys_unsorted(1)");
     check_query_fails("$.a | fromjson(1)");
     check_query_fails("$.a | tojson(1)");
+    check_query_fails("$.a | tostring(1)");
+    check_query_fails("$.a | tonumber(1)");
+    check_query_fails("$.a | ascii_downcase(1)");
+    check_query_fails("$.a | ascii_upcase(1)");
+    check_query_fails("$.a | ltrimstr()");
+    check_query_fails("$.a | rtrimstr()");
 
     /* ---- evaluation ---- */
     const char *doc =
@@ -586,6 +598,27 @@ int main(void)
     check_eval("null", "$missing", 0, "");
     check_eval("null", "$who | length()", 0, "5\n");
     check_eval("null", "$who | tojson()", 0, "\"\\\"world\\\"\"\n");
+
+    /* ---- tostring / tonumber / case / trimstr ---- */
+    check_eval("[1,\"a\",true,null,[1,2],{\"a\":1}]",
+               "$ | map(tostring())", 0,
+               "[\"1\",\"a\",\"true\",\"null\",\"[1,2]\",\"{\\\"a\\\":1}\"]\n");
+    check_eval("\"x\"", "$ | tostring()", 0, "\"x\"\n");
+    check_eval("\"42\"", "$ | tonumber()", 0, "42\n");
+    check_eval("\" 3.5 \"", "$ | tonumber()", 0, "3.5\n");
+    check_eval("7", "$ | tonumber()", 0, "7\n");
+    check_eval("\"x\"", "$ | tonumber()", 0, "");
+    check_eval("true", "$ | tonumber()", 0, "");
+    check_eval("\"AbC\"", "$ | ascii_downcase()", 0, "\"abc\"\n");
+    check_eval("\"AbC\"", "$ | ascii_upcase()", 0, "\"ABC\"\n");
+    check_eval("\"caf\\u00e9\"", "$ | ascii_upcase()", 0,
+               "\"CAF\xc3\xa9\"\n");
+    check_eval("\"foobar\"", "$ | ltrimstr(\"foo\")", 0, "\"bar\"\n");
+    check_eval("\"foobar\"", "$ | rtrimstr(\"bar\")", 0, "\"foo\"\n");
+    check_eval("\"foobar\"", "$ | ltrimstr(\"x\")", 0, "\"foobar\"\n");
+    check_eval("\"foobar\"", "$ | rtrimstr(\"x\")", 0, "\"foobar\"\n");
+    check_eval("\"aaa\"", "$ | ltrimstr(\"aa\")", 0, "\"a\"\n");
+    check_eval("\"aaa\"", "$ | rtrimstr(\"aa\")", 0, "\"a\"\n");
 
     printf("unit: %d checks, %d failures\n", g_checks, g_failures);
     return g_failures ? 1 : 0;
