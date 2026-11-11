@@ -136,6 +136,11 @@ t ltrimstr '$. | ltrimstr("foo")' '"foobar"' '"bar"' -c
 t ltrimstr_miss '$. | ltrimstr("x")' '"foobar"' '"foobar"' -c
 t rtrimstr '$. | rtrimstr("bar")' '"foobar"' '"foo"' -c
 t rtrimstr_miss '$. | rtrimstr("x")' '"foobar"' '"foobar"' -c
+t match '$. | match("[a-z]+")' '"abc123"' \
+    '{"offset":0,"length":3,"string":"abc","captures":[]}' -c
+t match_capture '$. | match("([a-z]+)([0-9]+)")' '"abc123"' \
+    '{"offset":0,"length":6,"string":"abc123","captures":[{"offset":0,"length":3,"string":"abc","name":null},{"offset":3,"length":3,"string":"123","name":null}]}' -c
+t match_none '$. | match("z")' '"abc"' '' -c
 t sort_keys '$. ' '{"b":1,"a":2,"c":{"z":3,"y":4}}' \
     '{"a":2,"b":1,"c":{"y":4,"z":3}}' -S -c
 t ascii_output '$.s' '{"s":"caf\u00e9"}' '"caf\\u00e9"' -a -c
@@ -193,6 +198,7 @@ exit_code missing_query 2 '' "$BIN"
 exit_code bad_json 3 '{bad' "$BIN" '$'
 exit_code bad_query 4 '{}' "$BIN" 'name('
 exit_code trailing_json 3 '{"a":1} {"b":2}' "$BIN" '$'
+exit_code nul_string 3 '"a\u0000b"' "$BIN" '$'
 exit_code unknown_flag 2 '{}' "$BIN" -Z '$'
 exit_code unknown_builtin 4 '{"a":1}' "$BIN" '$.a | nope()'
 exit_code bad_arity 4 '{"a":1}' "$BIN" '$.a | length(1)'
@@ -214,6 +220,7 @@ exit_code ascii_downcase_arity 4 '{}' "$BIN" '$. | ascii_downcase(1)'
 exit_code ascii_upcase_arity 4 '{}' "$BIN" '$. | ascii_upcase(1)'
 exit_code ltrimstr_arity 4 '{}' "$BIN" '$. | ltrimstr()'
 exit_code rtrimstr_arity 4 '{}' "$BIN" '$. | rtrimstr()'
+exit_code match_arity 4 '{}' "$BIN" '$. | match()'
 exit_code missing_query_file 2 '{}' "$BIN" -f /nonexistent/cjq-query '$.a'
 exit_code bad_indent 2 '{}' "$BIN" --indent 9 '$'
 exit_code bad_indent_empty 2 '{}' "$BIN" --indent= '$'
@@ -251,6 +258,13 @@ tlines raw_slurp '.' 'alpha\nbeta\n' 'alpha\nbeta' -R -s -r
 tlines raw_length 'length()' 'abc\nde\n' '3\n2' -R
 tlines raw_crlf '.' 'a\r\nb\r\n' 'a\nb' -R -r
 tlines raw_empty '.' '' '' -R
+
+# ---- nested-query limit ---------------------------------------------------
+DEEPQ="${TMPDIR:-/tmp}/cjq-deep-$$.cjq"
+if awk 'BEGIN{for(i=0;i<1000;i++)printf "map("; printf "."; for(i=0;i<1000;i++)printf ")"; print ""}' >"$DEEPQ" 2>/dev/null; then
+    exit_code deep_query 4 '{}' "$BIN" -f "$DEEPQ"
+    rm -f "$DEEPQ"
+fi
 
 # ---- help/version ---------------------------------------------------------
 CHECKS=$((CHECKS + 1))

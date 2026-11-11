@@ -32,7 +32,7 @@ $ curl -s https://api.example.dev/orders \
 | Runtime deps | libc + libm | libc + oniguruma (usually) |
 | Learning curve | small, path-oriented | large (full functional language) |
 | Startup time | µs | ms |
-| Query features | paths, slices, wildcards, comparisons, booleans, 43 builtins | everything, including modules |
+| Query features | paths, slices, wildcards, comparisons, booleans, 44 builtins | everything, including modules |
 
 If you already love jq's full language, use jq. cjq is for the 90% case: read
 a value, maybe walk an array, print it — with zero ceremony.
@@ -60,6 +60,17 @@ sudo cmake --install build
 `make install DESTDIR=/tmp/pkg` is ready for packaging. The man page is at
 `man/cjq.1` (`man ./man/cjq.1` without installing). Bash, zsh and fish
 completions live in `completions/` and are installed by both build systems.
+
+## Releases
+
+The version lives in `src/main.c` (`CJQ_VERSION`). After a clean commit:
+
+```sh
+make tag           # annotated vX.Y.Z tag, pushed to origin
+```
+
+The tag push triggers `.github/workflows/release.yml`, which builds and
+publishes Linux and macOS packages.
 
 ## Quick start
 
@@ -92,6 +103,10 @@ $ echo '{"b":2,"a":1}' | ./cjq -S -c '$'
 # POSIX extended regex test
 $ echo '"release-1.2.3"' | ./cjq -r '$. | test("^release-[0-9.]+$")'
 true
+
+# first regex match, with captures and codepoint offsets
+$ echo '"release-1.2.3"' | ./cjq -c '$. | match("([a-z]+)-([0-9.]+)")'
+{"offset":0,"length":13,"string":"release-1.2.3","captures":[{"offset":0,"length":7,"string":"release","name":null},{"offset":8,"length":5,"string":"1.2.3","name":null}]}
 
 # convert values to strings, or numeric strings to numbers
 $ echo '[1,"two",null]' | ./cjq -c '$. | map(tostring())'
@@ -220,6 +235,7 @@ Notes on corner cases, by design:
 | `from_entries()` | inverse of `to_entries()`; string and numeric keys |
 | `reverse()` | reverses an array or a UTF-8 string |
 | `test(regex)` | POSIX extended regex test on a string |
+| `match(regex)` | first regex match with byte-safe codepoint offsets and captures |
 | `sort(field?)` | array sorted ascending; `field` selects the sort key |
 | `max(field?)` / `min(field?)` | the item with the greatest/smallest key |
 | `max_by(expr)` / `min_by(expr)` | the item whose `expr` key is greatest/smallest |
@@ -307,20 +323,32 @@ A few implementation choices worth knowing about:
 ```sh
 make test          # unit + e2e, plain build
 make sanitizer     # ASan + UBSan build, unit + e2e
+make analyzer      # GCC -fanalyzer static analysis
 make fmt           # clang-format the sources, if available
 ```
 
 CI runs the suite on Ubuntu and macOS with GCC and Clang, both Make and CMake,
-with `-Werror`, plus an ASan/UBSan job and a man-page render check. The tests
-are intentionally boring: exact bytes in, exact bytes out, plus exit codes. The
-unit suite also throws a few thousand random byte strings at the parser and
-checks that deep nesting is rejected instead of overflowing the stack.
+with `-Werror`, plus an ASan/UBSan job, a static-analysis job and a man-page
+render check. The tests are intentionally boring: exact bytes in, exact bytes
+out, plus exit codes. The unit suite also throws a few thousand random byte
+strings at both parsers and checks that deep nesting is rejected instead of
+overflowing the stack.
+
+## Security
+
+`cjq` treats JSON input as hostile and the query as caller-authored code.
+Parser recursion is bounded, malformed input fails closed, and the CI
+workflows use least-privilege tokens and pinned actions.
+
+See [SECURITY.md](SECURITY.md) for the disclosure policy and
+[security/report.md](security/report.md) for the latest local review,
+including findings and residual risks.
 
 ## Roadmap
 
 - [ ] more builtins: `range()`, `path()`, `del()`
-- [ ] `match()` with capture offsets
 - [ ] Windows build (MSVC)
+- [x] `match()` with capture offsets
 - [x] `map()`, `add()`, `contains()`, `startswith()`, `endswith()`, `join()`, `split()`
 - [x] `unique()`, `group_by()`, `flatten()`, `to_entries()`
 - [x] `from_entries()`, `reverse()`, `test(regex)`
@@ -333,7 +361,10 @@ checks that deep nesting is rejected instead of overflowing the stack.
 - [x] `--arg` / `--argjson` variables and `$name`
 - [x] `-R/--raw-input` line-oriented text mode
 - [x] `tostring()`, `tonumber()`, `ascii_downcase()`, `ascii_upcase()`, `ltrimstr()`, `rtrimstr()`
+- [x] `match(regex)` with capture offsets
 - [x] random-input stress tests for the JSON parser
+- [x] random and mutated query stress tests for the query parser
+- [x] static analysis in CI and a local security review under `security/`
 - [x] tagged releases with Linux and macOS binaries
 
 Contributions are welcome. If you add a builtin, add a unit case and a line in

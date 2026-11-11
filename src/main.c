@@ -14,7 +14,7 @@
 #include <string.h>
 #include <unistd.h>
 
-#define CJQ_VERSION "1.3.0"
+#define CJQ_VERSION "1.4.0"
 
 #define EXIT_OK 0
 #define EXIT_FALSY 1
@@ -94,7 +94,7 @@ static void print_help(FILE *out)
         "          select(cond) map(expr) add() contains(x) startswith(s)\n"
         "          endswith(s) join(sep) split(sep) unique() group_by(expr)\n"
         "          flatten() to_entries() from_entries() reverse() test(regex)\n"
-        "          sort(field) max(field) min(field) sum(field)\n"
+        "          match(regex) sort(field) max(field) min(field) sum(field)\n"
         "          min_by(expr) max_by(expr) fromjson() tojson()\n"
         "          tostring() tonumber() ascii_downcase() ascii_upcase()\n"
         "          ltrimstr(s) rtrimstr(s)\n"

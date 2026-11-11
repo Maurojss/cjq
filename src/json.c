@@ -383,6 +383,11 @@ static char *parse_string(parser_t *p)
                     perr(p, "unpaired low surrogate");
                     return NULL;
                 }
+                if (high == 0)
+                {
+                    perr(p, "NUL is not supported in strings");
+                    return NULL;
+                }
                 utf8_encode(&b, high);
                 continue; /* cursor already past the escape */
             }

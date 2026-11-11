@@ -119,7 +119,11 @@ typedef struct
     const char *start;
     const char *error;
     size_t error_pos;
+    size_t depth;
 } qparser_t;
+
+/* Bound parser recursion for nested calls and dynamic indexes. */
+#define CJQ_MAX_QUERY_DEPTH 256
 
 static void qerr_at(qparser_t *p, const char *at, const char *message)
 {
@@ -271,6 +275,18 @@ static hnode *qnode(qkind k)
 /* Forward declarations for the mutually recursive little parser. */
 static hnode *parse_pipe(qparser_t *p);
 
+/* Parse a nested query (builtin argument or dynamic index) with a bounded
+ * recursion depth. */
+static hnode *parse_subquery(qparser_t *p)
+{
+    if (p->depth >= CJQ_MAX_QUERY_DEPTH)
+        return (qerr(p, "query nesting too deep"), NULL);
+    p->depth++;
+    hnode *n = parse_pipe(p);
+    p->depth--;
+    return n;
+}
+
 /* 0 = unknown, 1 = takes no argument, 2 = requires one, 3 = optional. */
 static int builtin_kind(const char *name)
 {
@@ -282,8 +298,8 @@ static int builtin_kind(const char *name)
         "ascii_downcase", "ascii_upcase", NULL};
     static const char *const required[] = {
         "has", "select", "map", "contains", "startswith", "endswith", "join",
-        "split", "group_by", "test", "min_by", "max_by", "ltrimstr",
-        "rtrimstr", NULL};
+        "split", "group_by", "test", "match", "min_by", "max_by",
+        "ltrimstr", "rtrimstr", NULL};
     static const char *const optional[] = {"keys", "sort", "max", "min", "sum",
                                            NULL};
 
@@ -308,14 +324,14 @@ static hnode *parse_call(qparser_t *p, char *name)
     skip_blanks(p);
     if (*p->cur != ')')
     {
-        hnode *first = parse_pipe(p);
+        hnode *first = parse_subquery(p);
         if (!first)
             return NULL;
         n->kid = first;
         hnode *last = first;
         while (q_accept(p, ','))
         {
-            hnode *another = parse_pipe(p);
+            hnode *another = parse_subquery(p);
             if (!another)
                 return NULL;
             last->alt = another;
@@ -407,7 +423,7 @@ static hnode *parse_bracket(qparser_t *p)
         return n;
     }
     /* dynamic index: a full nested query */
-    hnode *kid = parse_pipe(p);
+    hnode *kid = parse_subquery(p);
     if (!kid)
         return NULL;
     if (!q_accept(p, ']'))
@@ -701,7 +717,7 @@ static hnode *parse_pipe(qparser_t *p)
 
 hnode *query_parse(const char *text, const char **error, size_t *error_pos)
 {
-    qparser_t p = {text, text, NULL, 0};
+    qparser_t p = {text, text, NULL, 0, 0};
     skip_blanks(&p);
     if (*p.cur == '\0')
     {
@@ -1288,6 +1304,17 @@ static json_value *string_slice(const char *s, size_t from, size_t len)
     return v;
 }
 
+/* Count UTF-8 code points in the first `bytes` bytes of s.  Invalid
+ * sequences count one per non-continuation byte. */
+static size_t utf8_count(const char *s, size_t bytes)
+{
+    size_t n = 0;
+    for (size_t i = 0; i < bytes; ++i)
+        if (((unsigned char)s[i] & 0xC0) != 0x80)
+            n++;
+    return n;
+}
+
 /* Reverse UTF-8 code points without validating them: each leading byte
  * determines the chunk length, so valid text round-trips exactly. */
 static json_value *reverse_string(const char *s)
@@ -1598,6 +1625,70 @@ static void do_call(const hnode *call, json_value *val, results_t *outs)
         int matched = regexec(&re, val->string, 0, NULL, 0) == 0;
         regfree(&re);
         results_push(outs, json_bool_new(matched));
+        return;
+    }
+    if (strcmp(name, "match") == 0)
+    {
+        if (!arg || !val || val->kind != JSON_STRING)
+            return;
+        json_value *pattern = eval_first(arg, val);
+        if (!pattern || pattern->kind != JSON_STRING)
+            return;
+        regex_t re;
+        if (regcomp(&re, pattern->string, REG_EXTENDED) != 0)
+            return;
+        size_t nsub = re.re_nsub;
+        size_t nmatch = nsub + 1;
+        if (nmatch > 100)
+            nmatch = 100;
+        regmatch_t *m = xmalloc(nmatch * sizeof *m);
+        int matched = regexec(&re, val->string, nmatch, m, 0) == 0;
+        regfree(&re);
+        if (!matched)
+        {
+            free(m);
+            return;
+        }
+        size_t start = (size_t)m[0].rm_so;
+        size_t length = (size_t)(m[0].rm_eo - m[0].rm_so);
+        json_value *out = json_object_new();
+        json_object_set(out, "offset",
+                        json_number_new((double)utf8_count(val->string, start)));
+        json_object_set(out, "length",
+                        json_number_new((double)utf8_count(
+                            val->string + start, length)));
+        json_object_set(out, "string",
+                        string_slice(val->string, start, length));
+
+        json_value *captures = json_array_new();
+        for (size_t i = 1; i <= nsub && i < nmatch; ++i)
+        {
+            json_value *cap = json_object_new();
+            if (m[i].rm_so < 0)
+            {
+                json_object_set(cap, "offset", json_number_new(-1));
+                json_object_set(cap, "length", json_number_new(0));
+                json_object_set(cap, "string", json_null_new());
+            }
+            else
+            {
+                size_t cs = (size_t)m[i].rm_so;
+                size_t clen = (size_t)(m[i].rm_eo - m[i].rm_so);
+                json_object_set(cap, "offset",
+                                json_number_new((double)utf8_count(
+                                    val->string, cs)));
+                json_object_set(cap, "length",
+                                json_number_new((double)utf8_count(
+                                    val->string + cs, clen)));
+                json_object_set(cap, "string",
+                                string_slice(val->string, cs, clen));
+            }
+            json_object_set(cap, "name", json_null_new());
+            json_array_push(captures, cap);
+        }
+        json_object_set(out, "captures", captures);
+        free(m);
+        results_push(outs, out);
         return;
     }
     if (strcmp(name, "contains") == 0)

@@ -88,6 +88,7 @@ Builtins:
 .Ql from_entries() ,
 .Ql reverse() ,
 .Ql test(regex) ,
+.Ql match(regex) ,
 .Ql fromjson() ,
 .Ql tojson() ,
 .Ql sort(field?) ,
@@ -114,6 +115,15 @@ Builtins:
 .Ql test()
 uses POSIX extended regular expressions.
 An invalid pattern produces no result.
+.Ql match()
+returns the first match as an object with
+.Ql offset ,
+.Ql length ,
+.Ql string
+and a
+.Ql captures
+array; offsets count UTF-8 code points.
+An invalid pattern or a miss produces no result.
 .Pp
 Values
 .Dv null ,

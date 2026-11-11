@@ -22,6 +22,21 @@ Include:
 You can expect an acknowledgement within a few days. Once a fix is available,
 we will coordinate disclosure and credit you unless you prefer otherwise.
 
+The scope of the latest local review, its threat model and its findings are in
+[`security/report.md`](security/report.md).
+
+## Hardening
+
+- JSON nesting is capped at 512 levels and query nesting at 256 levels, so
+  hostile documents and queries fail cleanly instead of exhausting the stack.
+- Strings containing `\u0000` are rejected with exit status 3 rather than
+  silently truncated; the C-string model cannot represent embedded NUL safely.
+- CI workflows use least-privilege permissions, pinned Actions and a static
+  analysis job.
+- `test(regex)` and `match(regex)` use POSIX extended regular expressions.
+  Treat patterns from untrusted sources like code and run with a wall-clock
+  timeout.
+
 ## Scope
 
 `cjq` parses untrusted JSON and query text, so parser robustness is in scope:
@@ -35,5 +50,5 @@ The following are known and intentional, not vulnerabilities:
   This is a deliberate one-shot CLI design, not a leak in a long-lived server.
 - **Input is read into memory.** `cjq` is not designed to stream multi-gigabyte
   documents; memory use is proportional to the input.
-- **Nesting is capped at 512 levels** to keep recursion bounded. Deeper input
-  is rejected with exit status 3.
+- **Nesting is capped at 512 levels** for JSON and 256 levels for queries, to
+  keep recursion bounded. Deeper input is rejected.

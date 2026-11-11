@@ -208,6 +208,49 @@ static void check_deep_nesting(void)
     free(text);
 }
 
+/* Nested builtin calls and dynamic indexes must be rejected before the
+ * parser runs out of stack. */
+static void check_deep_queries(void)
+{
+    size_t n = 1000;
+    const char *err = NULL;
+    size_t pos = 0;
+
+    char *text = malloc(4 * n + n + 2);
+    if (!text)
+        exit(1);
+    for (size_t i = 0; i < n; ++i)
+        memcpy(text + 4 * i, "map(", 4);
+    text[4 * n] = '.';
+    for (size_t i = 0; i < n; ++i)
+        text[4 * n + 1 + i] = ')';
+    text[5 * n + 1] = '\0';
+
+    g_checks++;
+    hnode *ast = query_parse(text, &err, &pos);
+    if (ast || !err)
+        report("deep builtin query should have failed", NULL, NULL);
+    free(text);
+
+    const char *err2 = NULL;
+    size_t pos2 = 0;
+    char *index = malloc(2 * n + n + 3);
+    if (!index)
+        exit(1);
+    for (size_t i = 0; i < n; ++i)
+        memcpy(index + 2 * i, ".[", 2);
+    index[2 * n] = '.';
+    for (size_t i = 0; i < n; ++i)
+        index[2 * n + 1 + i] = ']';
+    index[3 * n + 1] = '\0';
+
+    g_checks++;
+    ast = query_parse(index, &err2, &pos2);
+    if (ast || !err2)
+        report("deep index query should have failed", NULL, NULL);
+    free(index);
+}
+
 static uint32_t next_rand(uint32_t *state)
 {
     uint32_t x = *state;
@@ -278,6 +321,63 @@ static void check_random_inputs(void)
     g_checks++;
 }
 
+/* Throw random bytes and mutations of valid queries at the query parser. */
+static void check_random_queries(void)
+{
+    static const char *const seeds[] = {
+        "$.a.b[0] | length()",
+        "$.users[*] | select(.age > 21) | map(.name)",
+        "$..id",
+        "$name",
+        "match(\"^[a-z]+$\")",
+        "keys_unsorted()",
+        "sort(.x)[-1]",
+    };
+    const size_t seed_count = sizeof seeds / sizeof seeds[0];
+    uint32_t state = 0x51ed270bu;
+    char buf[160];
+
+    for (int iter = 0; iter < 3000; ++iter)
+    {
+        size_t len;
+        if (iter & 1)
+        {
+            const char *seed = seeds[next_rand(&state) % seed_count];
+            len = strlen(seed);
+            memcpy(buf, seed, len);
+            for (int flips = 0; flips < 3; ++flips)
+                buf[next_rand(&state) % len] =
+                    (char)(1 + next_rand(&state) % 255);
+        }
+        else
+        {
+            len = next_rand(&state) % 64;
+            for (size_t i = 0; i < len; ++i)
+                buf[i] = (char)(1 + next_rand(&state) % 255);
+        }
+        buf[len] = '\0';
+
+        const char *err = NULL;
+        size_t pos = 0;
+        hnode *ast = query_parse(buf, &err, &pos);
+        if (!ast)
+        {
+            if (!err)
+            {
+                report("random query failed without an error", buf, NULL);
+                return;
+            }
+            continue;
+        }
+        char *fmt = query_format(ast);
+        if (!fmt)
+            report("query_format returned NULL", buf, NULL);
+        free(fmt);
+        q_free(ast);
+    }
+    g_checks++;
+}
+
 int main(void)
 {
     /* ---- JSON parsing and printing ---- */
@@ -309,12 +409,15 @@ int main(void)
     check_parse_fails("01");
     check_parse_fails("1.");
     check_parse_fails("\"abc");
+    check_parse_fails("\"a\\u0000b\"");
 
     /* ---- nesting limit ---- */
     check_deep_nesting();
+    check_deep_queries();
 
     /* ---- parser stress ---- */
     check_random_inputs();
+    check_random_queries();
 
     /* ---- query formatter ---- */
     check_format("$", "$");
@@ -362,6 +465,7 @@ int main(void)
     check_format("ascii_upcase()", "ascii_upcase()");
     check_format("ltrimstr(\"ab\")", "ltrimstr(\"ab\")");
     check_format("rtrimstr(\"ab\")", "rtrimstr(\"ab\")");
+    check_format("match(\"^a\")", "match(\"^a\")");
 
     /* ---- query syntax errors ---- */
     check_query_fails("");
@@ -398,6 +502,7 @@ int main(void)
     check_query_fails("$.a | ascii_upcase(1)");
     check_query_fails("$.a | ltrimstr()");
     check_query_fails("$.a | rtrimstr()");
+    check_query_fails("$.a | match()");
 
     /* ---- evaluation ---- */
     const char *doc =
@@ -566,6 +671,23 @@ int main(void)
     check_eval("\"hello\"", "$ | test(\"^x\")", 0, "false\n");
     check_eval("\"hello\"", "$ | test(\"[aeiou]\")", 0, "true\n");
     check_eval("\"hello\"", "$ | test(\"(\")", 0, "");
+    check_eval("\"abc123\"", "$ | match(\"[a-z]+\")", 0,
+               "{\"offset\":0,\"length\":3,\"string\":\"abc\",\"captures\":[]}\n");
+    check_eval("\"abc123\"", "$ | match(\"([a-z]+)([0-9]+)\")", 0,
+               "{\"offset\":0,\"length\":6,\"string\":\"abc123\","
+               "\"captures\":[{\"offset\":0,\"length\":3,\"string\":\"abc\","
+               "\"name\":null},{\"offset\":3,\"length\":3,\"string\":\"123\","
+               "\"name\":null}]}\n");
+    check_eval("\"abc\"", "$ | match(\"z\")", 0, "");
+    check_eval("\"abc\"", "$ | match(\"(\")", 0, "");
+    check_eval("\"a\"", "$ | match(\"(a)(x)?\")", 0,
+               "{\"offset\":0,\"length\":1,\"string\":\"a\","
+               "\"captures\":[{\"offset\":0,\"length\":1,\"string\":\"a\","
+               "\"name\":null},{\"offset\":-1,\"length\":0,"
+               "\"string\":null,\"name\":null}]}\n");
+    check_eval("\"caf\xc3\xa9\"", "$ | match(\"\xc3\xa9\")", 0,
+               "{\"offset\":3,\"length\":1,\"string\":\"\xc3\xa9\","
+               "\"captures\":[]}\n");
 
     /* ---- keys_unsorted / min_by / max_by / fromjson / tojson ---- */
     check_eval("{\"b\":2,\"a\":1}", "$ | keys_unsorted()", 0,

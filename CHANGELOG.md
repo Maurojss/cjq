@@ -2,6 +2,34 @@
 
 All notable changes to this project are documented in this file.
 
+## [1.4.0] - 2026-11-11
+
+### Added
+
+- `match(regex)` returns the first POSIX extended regex match as an object
+  with `offset`, `length`, `string` and a `captures` array. Offsets count
+  UTF-8 code points; unmatched groups report `offset: -1` and `string: null`.
+- `make analyzer` runs GCC's static analyzer; CI runs it as a separate job.
+- `security/` contains the scope, threat model, findings and report from a
+  local security review.
+
+### Security
+
+- The query parser now has a 256-level recursion budget for nested builtin
+  calls and dynamic indexes, preventing stack exhaustion (SEC-001).
+- JSON strings containing `\u0000` are rejected with exit status 3 instead of
+  being silently truncated, which could cause key collisions (SEC-004).
+- GitHub Actions are pinned to full commit SHAs, the CI workflow uses
+  `contents: read`, and Dependabot keeps the pins current (SEC-002).
+- Added 3000 random/mutated queries to the unit suite alongside the JSON
+  parser stress test.
+
+### Changed
+
+- Version is now 1.4.0.
+- `--help`, the README, the manual page and `SECURITY.md` document the new
+  builtin and security behavior.
+
 ## [1.3.0] - 2026-11-11
 
 ### Added

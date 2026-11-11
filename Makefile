@@ -12,6 +12,8 @@ FISHCOMP ?= $(PREFIX)/share/fish/vendor_completions.d
 
 SRC := src/main.c src/json.c src/query.c
 OBJ := $(SRC:src/%.c=obj/%.o)
+VERSION := $(shell sed -n 's/^#define CJQ_VERSION "\([^"]*\)"/\1/p' src/main.c)
+TAG := v$(VERSION)
 
 all: cjq
 
@@ -30,6 +32,28 @@ test: cjq tests/unit
 	./tests/unit
 	@echo "== e2e =="
 	./tests/run_tests.sh
+
+# Static analysis with GCC's analyzer.  Leak warnings are disabled because
+# the arena is intentionally one-shot; everything else is treated as an error
+# by the caller's -Werror.
+analyzer:
+	@mkdir -p build/analyzer
+	$(CC) $(CFLAGS) -fanalyzer -Wno-analyzer-malloc-leak -Isrc \
+	      -c -o build/analyzer/json.o src/json.c
+	$(CC) $(CFLAGS) -fanalyzer -Wno-analyzer-malloc-leak -Isrc \
+	      -c -o build/analyzer/query.o src/query.c
+	$(CC) $(CFLAGS) -fanalyzer -Wno-analyzer-malloc-leak -Isrc \
+	      -c -o build/analyzer/main.o src/main.c
+	@echo "analyzer: clean"
+
+# Annotated release tag derived from CJQ_VERSION.
+tag:
+	@test -n "$(VERSION)" || { echo "cannot read CJQ_VERSION" >&2; exit 1; }
+	@test -z "$$(git status --porcelain)" || \
+	    { echo "working tree is dirty; commit first" >&2; exit 1; }
+	git tag -a "$(TAG)" -m "cjq $(VERSION)"
+	git push origin "$(TAG)"
+	@echo "tagged and pushed $(TAG)"
 
 # ASan + UBSan run, for CI or when chasing a bug.
 #
@@ -67,4 +91,4 @@ fmt:
 clean:
 	rm -rf obj cjq build tests/unit
 
-.PHONY: all test sanitizer install fmt clean
+.PHONY: all test sanitizer analyzer tag install fmt clean
