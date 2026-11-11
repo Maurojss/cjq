@@ -32,6 +32,13 @@ test: cjq tests/unit
 	./tests/run_tests.sh
 
 # ASan + UBSan run, for CI or when chasing a bug.
+#
+# cjq is a one-shot CLI: values and AST nodes are intentionally never freed,
+# so LeakSanitizer would flag every allocation.  Keep ASan for memory errors
+# but disable leak detection; make UBSan failures fatal.
+ASAN_OPTIONS  ?= detect_leaks=0
+UBSAN_OPTIONS ?= halt_on_error=1:print_stacktrace=1
+
 sanitizer:
 	@mkdir -p build
 	$(CC) -std=c11 -Wall -Wextra -Wpedantic -O1 -g \
@@ -40,8 +47,10 @@ sanitizer:
 	$(CC) -std=c11 -Wall -Wextra -Wpedantic -O1 -g \
 	      -fsanitize=address,undefined -fno-omit-frame-pointer \
 	      -o build/unit tests/unit.c src/json.c src/query.c $(LDFLAGS) -lm
-	./build/unit
-	CJQ_BIN=$(CURDIR)/build/cjq ./tests/run_tests.sh
+	ASAN_OPTIONS="$(ASAN_OPTIONS)" UBSAN_OPTIONS="$(UBSAN_OPTIONS)" \
+	    ./build/unit
+	ASAN_OPTIONS="$(ASAN_OPTIONS)" UBSAN_OPTIONS="$(UBSAN_OPTIONS)" \
+	    CJQ_BIN=$(CURDIR)/build/cjq ./tests/run_tests.sh
 
 install: all
 	install -d $(DESTDIR)$(BINDIR) $(DESTDIR)$(MANDIR) $(DESTDIR)$(BASHCOMP) \
