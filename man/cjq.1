@@ -1,4 +1,4 @@
-.Dd November 8, 2026
+.Dd November 9, 2026
 .Dt CJQ 1
 .Os
 .Sh NAME
@@ -34,6 +34,11 @@ item counted from the end
 slice, end exclusive; either bound may be omitted
 .It Ic $."two words"
 quoted member name
+.It Ic $name
+variable defined with
+.Fl -arg
+or
+.Fl -argjson
 .It Ic $.a[*] No or Ic $.a[]
 every item of an array or every value of an object
 .It Ic $.a?
@@ -64,6 +69,7 @@ pipe results into a builtin call
 Builtins:
 .Ql length() ,
 .Ql keys() ,
+.Ql keys_unsorted() ,
 .Ql values() ,
 .Ql type() ,
 .Ql has("key") ,
@@ -82,9 +88,13 @@ Builtins:
 .Ql from_entries() ,
 .Ql reverse() ,
 .Ql test(regex) ,
+.Ql fromjson() ,
+.Ql tojson() ,
 .Ql sort(field?) ,
 .Ql max(field?) ,
 .Ql min(field?) ,
+.Ql max_by(expr) ,
+.Ql min_by(expr) ,
 .Ql sum(field?) ,
 .Ql first() ,
 .Ql last() ,
@@ -142,6 +152,14 @@ Escape bytes outside ASCII as
 using surrogate pairs for code points above U+FFFF.
 .It Fl s , Fl -slurp
 Read every whitespace-separated JSON value and present them as one array.
+.It Fl R , Fl -raw-input
+Read raw text instead of JSON.
+Without
+.Fl s
+each input line becomes a string and the query runs once per line; with
+.Fl s
+the whole input becomes one string.
+A trailing carriage return is removed from each line.
 .It Fl e , Fl -exit-status
 Exit 1 when the result is falsy or empty, 0 otherwise.
 .It Fl n , Fl -null-input
@@ -169,6 +187,17 @@ Read the query from
 .Ar file
 instead of the query argument; the remaining positional argument is the
 input file.
+.It Fl -arg Ar name value
+Define the variable
+.Ql $name
+as the string
+.Ar value .
+.It Fl -argjson Ar name json
+Define the variable
+.Ql $name
+as the JSON value parsed from
+.Ar json .
+An invalid or incomplete JSON value is a usage error.
 .It Fl h , Fl -help
 Print usage information.
 .It Fl v , Fl -version
@@ -224,9 +253,20 @@ Filter and transform:
 .Bd -literal -offset indent
 $ cjq -r \&'$.users | select(.age > 21) | map(.name)' users.json
 .Ed
+.Pp
+Pass a shell value into a query:
+.Bd -literal -offset indent
+$ cjq -n --arg name Ada \&'$name'
+"Ada"
+.Ed
+.Pp
+Read lines of text instead of JSON:
+.Bd -literal -offset indent
+$ printf 'alpha\enbeta\en' | cjq -R -r .
+.Ed
 .Sh SEE ALSO
 .Xr jq 1
 .Sh AUTHORS
-.An mauroncfds Aq Mt mauroncfds@users.noreply.github.com
+.An Maurojss Aq Mt 269823277+Maurojss@users.noreply.github.com
 .Sh LICENSE
 MIT.

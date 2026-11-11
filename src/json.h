@@ -95,6 +95,10 @@ void json_print(const json_value *v, FILE *out, int pretty);
 /* Like json_print(), but newline == 0 omits the trailing newline. */
 void json_print_ex(const json_value *v, FILE *out, int pretty, int newline);
 
+/* Render v as compact JSON (no colors, sorting or ASCII escaping) and return
+ * the result as a newly allocated string value. */
+json_value *json_value_to_string(const json_value *v);
+
 /* Shortest round-trip representation of a double ("1" for 1.0). */
 void json_format_number(double number, char buf[40]);
 

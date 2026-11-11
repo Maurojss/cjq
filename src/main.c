@@ -14,7 +14,7 @@
 #include <string.h>
 #include <unistd.h>
 
-#define CJQ_VERSION "1.1.0"
+#define CJQ_VERSION "1.2.0"
 
 #define EXIT_OK 0
 #define EXIT_FALSY 1
@@ -24,15 +24,26 @@
 
 typedef struct
 {
+    const char *name;
+    const char *value;
+    int is_json;
+} cli_var_t;
+
+#define MAX_VARS 64
+
+typedef struct
+{
     const char *query_text;
     const char *query_file;
     const char *file;
     int compact, raw, slurp, exit_status, null_input;
     int want_color, no_color, help, version, option_end;
-    int ascii, join, indent_set, sort_keys;
+    int ascii, join, indent_set, sort_keys, raw_input;
     char indent[16];
     const char *positionals[2];
     int npos;
+    cli_var_t vars[MAX_VARS];
+    int nvars;
 } flags_t;
 
 static void print_help(FILE *out)
@@ -49,6 +60,7 @@ static void print_help(FILE *out)
         "  -j --join-output    no newline after each result\n"
         "  -a --ascii-output   escape non-ASCII characters as \\uXXXX\n"
         "  -s --slurp          gather every JSON value into one array\n"
+        "  -R --raw-input      read raw text lines instead of JSON\n"
         "  -e --exit-status    exit 1 when the result is falsy or empty\n"
         "  -n --null-input     run the query against null, no input read\n"
         "  -C --color          force colors even when piped\n"
@@ -58,6 +70,8 @@ static void print_help(FILE *out)
         "     --tab            indent pretty output with one tab\n"
         "  -S --sort-keys      sort object keys in the output\n"
         "  -f --from-file F    read the query from file F\n"
+        "     --arg N V        set $N to the string V\n"
+        "     --argjson N V    set $N to the JSON value V\n"
         "  -h --help           show this help\n"
         "  -v --version        show the version\n"
         "\n"
@@ -71,16 +85,18 @@ static void print_help(FILE *out)
         "  $.a?              optional member: emit null instead of a miss\n"
         "  $..uid            gather uid members at every depth\n"
         "  $.a, $.b          print several paths\n"
+        "  $name             variable from --arg or --argjson\n"
         "  $.age > 21        comparisons: == != < <= > >=\n"
         "  $.ok and $.age > 18  boolean operators: and, or\n"
         "  $.a | length()    pipe into a builtin function\n"
         "\n"
-        "builtins: length() keys() values() type() has(key) select(cond)\n"
-        "          map(expr) add() contains(x) startswith(s) endswith(s)\n"
-        "          join(sep) split(sep) unique() group_by(expr) flatten()\n"
-        "          to_entries() from_entries() reverse() test(regex)\n"
-        "          sort(field) max(field) min(field) sum(field) first() last()\n"
-        "          floor() ceil() abs() sqrt() ftos() not()\n"
+        "builtins: length() keys() keys_unsorted() values() type() has(key)\n"
+        "          select(cond) map(expr) add() contains(x) startswith(s)\n"
+        "          endswith(s) join(sep) split(sep) unique() group_by(expr)\n"
+        "          flatten() to_entries() from_entries() reverse() test(regex)\n"
+        "          sort(field) max(field) min(field) sum(field)\n"
+        "          min_by(expr) max_by(expr) fromjson() tojson()\n"
+        "          first() last() floor() ceil() abs() sqrt() ftos() not()\n"
         "\n"
         "exit status: 0 success; 1 falsy result with -e; 2 usage error;\n"
         "             3 invalid JSON input; 4 invalid query\n");
@@ -178,6 +194,20 @@ static void parse_args(int argc, char **argv, flags_t *f)
                 f->ascii = 1;
             else if (!strcmp(m, "slurp"))
                 f->slurp = 1;
+            else if (!strcmp(m, "raw-input"))
+                f->raw_input = 1;
+            else if (!strcmp(m, "arg") || !strcmp(m, "argjson"))
+            {
+                int is_json = !strcmp(m, "argjson");
+                if (i + 2 >= argc)
+                    usage_fail("--arg/--argjson require NAME and VALUE", NULL);
+                if (f->nvars >= MAX_VARS)
+                    usage_fail("too many --arg/--argjson variables", NULL);
+                f->vars[f->nvars].name = argv[++i];
+                f->vars[f->nvars].value = argv[++i];
+                f->vars[f->nvars].is_json = is_json;
+                f->nvars++;
+            }
             else if (!strcmp(m, "exit-status"))
                 f->exit_status = 1;
             else if (!strcmp(m, "null-input"))
@@ -217,6 +247,7 @@ static void parse_args(int argc, char **argv, flags_t *f)
                 case 'j': f->join = 1; break;
                 case 'a': f->ascii = 1; break;
                 case 's': f->slurp = 1; break;
+                case 'R': f->raw_input = 1; break;
                 case 'e': f->exit_status = 1; break;
                 case 'n': f->null_input = 1; break;
                 case 'C': f->want_color = 1; break;
@@ -285,6 +316,60 @@ static char *read_named_file(const char *path, const char *what)
     return buf;
 }
 
+static json_value *parse_cli_json(const char *text, const char *name)
+{
+    const char *end, *error;
+    size_t pos;
+    json_value *v = json_parse(text, &end, &error, &pos);
+    if (!v)
+    {
+        fprintf(stderr, "cjq: --argjson %s: %s\n", name, error);
+        exit(EXIT_USAGE);
+    }
+    while (*end == ' ' || *end == '\t' || *end == '\n' || *end == '\r')
+        end++;
+    if (*end != '\0')
+    {
+        fprintf(stderr, "cjq: --argjson %s: trailing characters\n", name);
+        exit(EXIT_USAGE);
+    }
+    return v;
+}
+
+static void push_line(json_value *lines, const char *s, size_t len)
+{
+    if (len && s[len - 1] == '\r')
+        len--;
+    char *tmp = xmalloc(len + 1);
+    memcpy(tmp, s, len);
+    tmp[len] = '\0';
+    json_array_push(lines, json_string_new(tmp));
+    free(tmp);
+}
+
+/* Split raw input into one string per line, like `jq -R`. */
+static json_value *split_lines(const char *buf)
+{
+    json_value *lines = json_array_new();
+    if (*buf == '\0')
+        return lines;
+    const char *start = buf;
+    for (;;)
+    {
+        const char *nl = strchr(start, '\n');
+        if (!nl)
+        {
+            push_line(lines, start, strlen(start));
+            break;
+        }
+        push_line(lines, start, (size_t)(nl - start));
+        start = nl + 1;
+        if (*start == '\0')
+            break;
+    }
+    return lines;
+}
+
 static void input_fail(const char *buf, size_t pos, const char *error)
 {
     long line, col;
@@ -330,6 +415,14 @@ int main(int argc, char **argv)
     if (!f.query_text)
         usage_fail("a query is required", NULL);
 
+    for (int i = 0; i < f.nvars; ++i)
+    {
+        json_value *v = f.vars[i].is_json
+                            ? parse_cli_json(f.vars[i].value, f.vars[i].name)
+                            : json_string_new(f.vars[i].value);
+        query_set_var(f.vars[i].name, v);
+    }
+
     json_set_colors(!f.no_color && !getenv("CJQ_NO_COLOR") &&
                     (f.want_color || isatty(1)));
     json_set_ascii(f.ascii);
@@ -337,7 +430,8 @@ int main(int argc, char **argv)
     if (f.indent_set)
         json_set_indent(f.indent);
 
-    json_value *root;
+    json_value *root = NULL;
+    json_value *lines = NULL;
     if (f.null_input)
     {
         root = json_null_new();
@@ -358,7 +452,14 @@ int main(int argc, char **argv)
         if (f.file)
             fclose(fh);
 
-        if (f.slurp)
+        if (f.raw_input)
+        {
+            if (f.slurp)
+                root = json_string_new(buf);
+            else
+                lines = split_lines(buf);
+        }
+        else if (f.slurp)
         {
             root = json_array_new();
             const char *c = buf;
@@ -406,7 +507,13 @@ int main(int argc, char **argv)
 
     results_t rs;
     results_init(&rs);
-    query_eval(ast, root, &rs);
+    if (lines)
+    {
+        for (size_t i = 0; i < lines->count; ++i)
+            query_eval(ast, lines->items[i], &rs);
+    }
+    else
+        query_eval(ast, root, &rs);
 
     for (size_t i = 0; i < rs.n; ++i)
     {

@@ -24,8 +24,9 @@ _cjq()
 
     if [[ $cur == -* ]]; then
         opts="-c --compact -r --raw -j --join-output -a --ascii-output \
--s --slurp -e --exit-status -n --null-input -C --color -M --monochrome \
---no-color --indent --tab -S --sort-keys -f --from-file -h --help -v --version"
+-s --slurp -R --raw-input -e --exit-status -n --null-input -C --color \
+-M --monochrome --no-color --indent --tab -S --sort-keys -f --from-file \
+--arg --argjson -h --help -v --version"
         COMPREPLY=( $(compgen -W "$opts" -- "$cur") )
         return 0
     fi

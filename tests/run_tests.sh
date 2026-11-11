@@ -34,6 +34,24 @@ t() {
     fi
 }
 
+# tlines NAME QUERY INPUT EXPECTED FLAG...
+# Like t, but INPUT is expanded with printf %b so \\n means a real newline.
+tlines() {
+    name=$1
+    query=$2
+    input=$3
+    expected=$4
+    shift 4
+    CHECKS=$((CHECKS + 1))
+    got=$(printf '%b' "$input" | "$BIN" "$@" "$query" 2>/dev/null)
+    want=$(printf '%b' "$expected")
+    if [ "$got" != "$want" ]; then
+        report "$name"
+        printf '  got:  %s\n' "$got" >&2
+        printf '  want: %s\n' "$want" >&2
+    fi
+}
+
 # exit_code NAME EXPECTED-CODE INPUT COMMAND...
 exit_code() {
     name=$1
@@ -99,6 +117,14 @@ t reverse_array '$. | reverse()' '[1,2,3]' '[3,2,1]' -c
 t reverse_string '$. | reverse()' '"abc"' '"cba"' -c
 t test_regex '$. | test("^h.*o$")' '"hello"' 'true' -c
 t test_regex_false '$. | test("^x")' '"hello"' 'false' -c
+t keys_unsorted '$. | keys_unsorted()' '{"b":2,"a":1}' '["b","a"]' -c
+t min_by '$. | min_by(.v)' '[{"n":"a","v":3},{"n":"b","v":1}]' \
+    '{"n":"b","v":1}' -c
+t max_by '$. | max_by(.v)' '[{"n":"a","v":3},{"n":"b","v":1}]' \
+    '{"n":"a","v":3}' -c
+t fromjson '$. | fromjson()' '"{\"a\":1}"' '{"a":1}' -c
+t fromjson_invalid '$. | fromjson()' '"nope"' '' -c
+t tojson '$. | tojson()' '{"a":[1,2]}' '"{\"a\":[1,2]}"' -c
 t sort_keys '$. ' '{"b":1,"a":2,"c":{"z":3,"y":4}}' \
     '{"a":2,"b":1,"c":{"y":4,"z":3}}' -S -c
 t ascii_output '$.s' '{"s":"caf\u00e9"}' '"caf\\u00e9"' -a -c
@@ -166,6 +192,11 @@ exit_code flatten_arity 4 '[]' "$BIN" '$. | flatten(1)'
 exit_code from_entries_arity 4 '[]' "$BIN" '$. | from_entries(1)'
 exit_code reverse_arity 4 '[]' "$BIN" '$. | reverse(1)'
 exit_code test_arity 4 '"x"' "$BIN" '$. | test()'
+exit_code min_by_arity 4 '[]' "$BIN" '$. | min_by()'
+exit_code max_by_arity 4 '[]' "$BIN" '$. | max_by()'
+exit_code keys_unsorted_arity 4 '{}' "$BIN" '$. | keys_unsorted(1)'
+exit_code fromjson_arity 4 '""' "$BIN" '$. | fromjson(1)'
+exit_code tojson_arity 4 '{}' "$BIN" '$. | tojson(1)'
 exit_code missing_query_file 2 '{}' "$BIN" -f /nonexistent/cjq-query '$.a'
 exit_code bad_indent 2 '{}' "$BIN" --indent 9 '$'
 exit_code bad_indent_empty 2 '{}' "$BIN" --indent= '$'
@@ -184,6 +215,25 @@ if printf '%s' '$.a > 0' >"$QFILE" 2>/dev/null &&
     [ "$got" = "true" ] || report "--from-file= works with a JSON file"
     rm -f "$QFILE" "$IFILE"
 fi
+
+# ---- CLI variables -------------------------------------------------------
+t var_arg '$who' 'null' 'world' -r --arg who world
+t var_arg_empty '$who | length()' 'null' '0' --arg who ''
+t var_arg_json '$n' 'null' '42' -c --argjson n 42
+t var_arg_json_obj '$obj.x[1]' 'null' '2' -c --argjson obj '{"x":[1,2]}'
+t var_arg_json_null '$obj' 'null' 'null' -c --argjson obj null
+t var_missing '$nope' '{"a":1}' '' -c
+t var_pipe '$who | length()' 'null' '5' --arg who world
+exit_code bad_argjson 2 'null' "$BIN" --argjson n nope '$n'
+exit_code bad_argjson_trailing 2 'null' "$BIN" --argjson n '1 2' '$n'
+exit_code missing_arg 2 'null' "$BIN" --arg name
+
+# ---- raw input -----------------------------------------------------------
+tlines raw_lines '.' 'alpha\nbeta\n' 'alpha\nbeta' -R -r
+tlines raw_slurp '.' 'alpha\nbeta\n' 'alpha\nbeta' -R -s -r
+tlines raw_length 'length()' 'abc\nde\n' '3\n2' -R
+tlines raw_crlf '.' 'a\r\nb\r\n' 'a\nb' -R -r
+tlines raw_empty '.' '' '' -R
 
 # ---- help/version ---------------------------------------------------------
 CHECKS=$((CHECKS + 1))

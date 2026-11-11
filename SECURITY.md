@@ -9,7 +9,7 @@ receive fixes.
 
 Please do **not** open a public issue for a vulnerability. Use GitHub's private
 vulnerability reporting (Security → Report a vulnerability) or email the
-maintainer at `mauroncfds@users.noreply.github.com`.
+maintainer at `269823277+Maurojss@users.noreply.github.com`.
 
 Include:
 

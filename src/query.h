@@ -17,6 +17,7 @@
  *   $.age > 21          comparisons (< <= == != >= >)
  *   select(.ok == true) comparisons inside builtin arguments
  *   $.a and $.b         boolean operators (and, or)
+ *   $name               variable set by --arg / --argjson
  */
 
 #include "json.h"
@@ -26,6 +27,7 @@
 typedef enum
 {
     K_ROOT,  /* '$'                                        */
+    K_VAR,   /* $name — CLI variable                       */
     K_DOT,   /* '.' — identity                             */
     K_FIELD, /* .name                                      */
     K_IDX,   /* [n] or [query]                             */
@@ -67,6 +69,10 @@ struct hnode
  * shares ownership with the small memory arena implicitly owned by the
  * process — cjq never frees query nodes except through q_free(). */
 hnode *query_parse(const char *text, const char **error, size_t *error_pos);
+
+/* Define a query variable such as $name.  The value is borrowed and must
+ * outlive evaluation; later definitions of the same name win. */
+void query_set_var(const char *name, json_value *value);
 
 /* Render an AST back to text ("$.a.b[2]"); malloc'd, never NULL. */
 char *query_format(const hnode *n);

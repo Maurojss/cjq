@@ -24,6 +24,43 @@ enum
     CMP_GE
 };
 
+/* CLI variables ($name).  Values are owned by the caller and never freed. */
+typedef struct
+{
+    char *name;
+    json_value *value;
+} query_var_t;
+
+static query_var_t *g_vars;
+static size_t g_var_count;
+static size_t g_var_cap;
+
+void query_set_var(const char *name, json_value *value)
+{
+    for (size_t i = 0; i < g_var_count; ++i)
+        if (strcmp(g_vars[i].name, name) == 0)
+        {
+            g_vars[i].value = value;
+            return;
+        }
+    if (g_var_count == g_var_cap)
+    {
+        g_var_cap = g_var_cap ? g_var_cap * 2 : 8;
+        g_vars = xrealloc(g_vars, g_var_cap * sizeof *g_vars);
+    }
+    g_vars[g_var_count].name = xstrdup(name);
+    g_vars[g_var_count].value = value;
+    g_var_count++;
+}
+
+static json_value *query_get_var(const char *name)
+{
+    for (size_t i = g_var_count; i > 0; --i)
+        if (strcmp(g_vars[i - 1].name, name) == 0)
+            return g_vars[i - 1].value;
+    return NULL;
+}
+
 /* ----------------------------- results ---------------------------------- */
 
 void results_init(results_t *r)
@@ -240,10 +277,11 @@ static int builtin_kind(const char *name)
     static const char *const no_args[] = {
         "length", "values", "type", "first", "last", "add",
         "floor", "ceil", "abs", "sqrt", "ftos", "not",
-        "unique", "flatten", "to_entries", "from_entries", "reverse", NULL};
+        "unique", "flatten", "to_entries", "from_entries", "reverse",
+        "keys_unsorted", "fromjson", "tojson", NULL};
     static const char *const required[] = {
         "has", "select", "map", "contains", "startswith", "endswith", "join",
-        "split", "group_by", "test", NULL};
+        "split", "group_by", "test", "min_by", "max_by", NULL};
     static const char *const optional[] = {"keys", "sort", "max", "min", "sum",
                                            NULL};
 
@@ -384,6 +422,12 @@ static hnode *parse_step(qparser_t *p)
     if (c == '$')
     {
         p->cur++;
+        if (is_name_start(*p->cur))
+        {
+            hnode *n = qnode(K_VAR);
+            n->name = parse_name(p);
+            return n;
+        }
         return qnode(K_ROOT);
     }
     if (c == '.')
@@ -781,6 +825,10 @@ static void fmt_chain(sbuf_t *b, const hnode *n)
             break;
         case K_RECF:
             sbuf_text(b, "..");
+            fmt_name(b, c->name);
+            break;
+        case K_VAR:
+            sbuf_push(b, '$');
             fmt_name(b, c->name);
             break;
         case K_CONST:
@@ -1236,6 +1284,23 @@ static json_value *reverse_string(const char *s)
     return v;
 }
 
+/* Parse a complete JSON text (fromjson): trailing blanks are allowed, any
+ * other trailing bytes make the conversion fail. */
+static json_value *parse_json_text(const char *text)
+{
+    const char *end = NULL;
+    const char *error = NULL;
+    size_t pos = 0;
+    json_value *v = json_parse(text, &end, &error, &pos);
+    if (!v)
+        return NULL;
+    while (*end == ' ' || *end == '\t' || *end == '\n' || *end == '\r')
+        end++;
+    if (*end != '\0')
+        return NULL;
+    return v;
+}
+
 static void do_call(const hnode *call, json_value *val, results_t *outs)
 {
     const char *name = call->name;
@@ -1285,6 +1350,16 @@ static void do_call(const hnode *call, json_value *val, results_t *outs)
                 json_array_push(out, json_string_new(ms[i].key));
         }
         free(ms);
+        results_push(outs, out);
+        return;
+    }
+    if (strcmp(name, "keys_unsorted") == 0)
+    {
+        if (!val || val->kind != JSON_OBJECT)
+            return;
+        json_value *out = json_array_new();
+        for (size_t i = 0; i < val->count; ++i)
+            json_array_push(out, json_string_new(val->keys[i]));
         results_push(outs, out);
         return;
     }
@@ -1457,6 +1532,24 @@ static void do_call(const hnode *call, json_value *val, results_t *outs)
         }
         else if (val->kind == JSON_STRING)
             results_push(outs, reverse_string(val->string));
+        return;
+    }
+    if (strcmp(name, "fromjson") == 0)
+    {
+        if (!val || val->kind != JSON_STRING)
+            return;
+        json_value *v = parse_json_text(val->string);
+        if (v)
+            results_push(outs, v);
+        return;
+    }
+    if (strcmp(name, "tojson") == 0)
+    {
+        if (!val)
+            return;
+        json_value *s = json_value_to_string(val);
+        if (s)
+            results_push(outs, s);
         return;
     }
     if (strcmp(name, "test") == 0)
@@ -1649,11 +1742,12 @@ static void do_call(const hnode *call, json_value *val, results_t *outs)
         results_push(outs, out);
         return;
     }
-    if (strcmp(name, "max") == 0 || strcmp(name, "min") == 0)
+    if (strcmp(name, "max") == 0 || strcmp(name, "min") == 0 ||
+        strcmp(name, "max_by") == 0 || strcmp(name, "min_by") == 0)
     {
         if (!val || val->kind != JSON_ARRAY || !val->count)
             return;
-        int want_max = name[0] == 'm' && name[1] == 'a';
+        int want_max = strncmp(name, "max", 3) == 0;
         size_t best = 0;
         json_value *bestv = arg ? eval_first(arg, val->items[0]) : val->items[0];
         for (size_t i = 1; i < val->count; ++i)
@@ -1749,6 +1843,13 @@ static void collect(const hnode *n, json_value *val, results_t *r)
     case K_DOT:
         results_push(&outs, val);
         break;
+    case K_VAR:
+    {
+        json_value *v = query_get_var(n->name);
+        if (v)
+            results_push(&outs, v);
+        break;
+    }
     case K_CONST:
         results_push(&outs, json_string_new(n->name ? n->name : ""));
         break;
@@ -1927,6 +2028,7 @@ const char *query_kind_name(qkind k)
     switch (k)
     {
     case K_ROOT: return "q-root";
+    case K_VAR: return "q-var";
     case K_DOT: return "q-dot";
     case K_FIELD: return "q-field";
     case K_IDX: return "q-idx";

@@ -2,6 +2,8 @@
  * json.c — JSON value model, parser and printer.  See json.h.
  */
 
+#define _POSIX_C_SOURCE 200809L
+
 #include "json.h"
 
 #include <ctype.h>
@@ -959,4 +961,33 @@ void json_print_ex(const json_value *v, FILE *out, int pretty, int newline)
 void json_print(const json_value *v, FILE *out, int pretty)
 {
     json_print_ex(v, out, pretty, 1);
+}
+
+json_value *json_value_to_string(const json_value *v)
+{
+    char *buf = NULL;
+    size_t len = 0;
+    FILE *f = open_memstream(&buf, &len);
+    if (!f)
+        return NULL;
+
+    int colors = g_colors;
+    int ascii = g_ascii;
+    int sort_keys = g_sort_keys;
+    g_colors = 0;
+    g_ascii = 0;
+    g_sort_keys = 0;
+    json_print_ex(v, f, 0, 0);
+    g_colors = colors;
+    g_ascii = ascii;
+    g_sort_keys = sort_keys;
+
+    if (fclose(f) != 0)
+    {
+        free(buf);
+        return NULL;
+    }
+    json_value *s = json_string_new(buf ? buf : "");
+    free(buf);
+    return s;
 }

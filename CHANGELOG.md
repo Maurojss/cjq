@@ -2,6 +2,27 @@
 
 All notable changes to this project are documented in this file.
 
+## [1.2.0] - 2026-11-09
+
+### Added
+
+- Variables: `--arg NAME VALUE` defines `$NAME` as a string and
+  `--argjson NAME JSON` defines it as a parsed JSON value. `$name` can be
+  used anywhere a value is expected; a missing variable produces no
+  result. Invalid or trailing JSON in `--argjson` is a usage error
+  (exit status 2).
+- `-R`/`--raw-input` reads raw text instead of JSON. Without `-s` each
+  line becomes a string and the query runs once per line; with `-s` the
+  whole input becomes one string. A trailing carriage return is removed
+  from each line.
+- Unit and end-to-end coverage for variables and raw input.
+
+### Changed
+
+- Version is now 1.2.0.
+- `--help`, the README, the manual page and the bash/zsh/fish completions
+  document the new options.
+
 ## [1.1.0] - 2026-11-08
 
 ### Added
@@ -17,13 +38,15 @@ All notable changes to this project are documented in this file.
   type and then value.
 - Boolean operators `and` and `or`, with `and` binding tighter than `or`;
   both can be used inside `select()` and other builtin arguments.
-- 32 builtins: `length()`, `keys()`, `values()`, `type()`, `has(key)`,
-  `select(cond)`, `map(expr)`, `add()`, `contains(x)`, `startswith(s)`,
-  `endswith(s)`, `join(sep)`, `split(sep)`, `unique()`, `group_by(expr)`,
-  `flatten()`, `to_entries()`, `from_entries()`, `reverse()`,
-  `test(regex)`, `sort(field?)`, `max(field?)`, `min(field?)`,
-  `sum(field?)`, `first()`, `last()`, `floor()`, `ceil()`, `abs()`,
-  `sqrt()`, `ftos()` and `not()`. `test()` uses POSIX extended regular
+- 37 builtins: `length()`, `keys()`, `keys_unsorted()`, `values()`,
+  `type()`, `has(key)`, `select(cond)`, `map(expr)`, `add()`,
+  `contains(x)`, `startswith(s)`, `endswith(s)`, `join(sep)`,
+  `split(sep)`, `unique()`, `group_by(expr)`, `flatten()`,
+  `to_entries()`, `from_entries()`, `reverse()`, `test(regex)`,
+  `fromjson()`, `tojson()`, `sort(field?)`, `max(field?)`,
+  `min(field?)`, `max_by(expr)`, `min_by(expr)`, `sum(field?)`,
+  `first()`, `last()`, `floor()`, `ceil()`, `abs()`, `sqrt()`,
+  `ftos()` and `not()`. `test()` uses POSIX extended regular
   expressions.
 - CLI options `-c`, `-r`, `-j`, `-a`, `-s`, `-e`, `-n`, `-C`, `-M`,
   `-S`, `-f`, `-h`, `-v` (also as long names `--compact`, `--raw`,

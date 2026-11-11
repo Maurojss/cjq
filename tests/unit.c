@@ -349,6 +349,13 @@ int main(void)
     check_format("from_entries()", "from_entries()");
     check_format("reverse()", "reverse()");
     check_format("test(\"^a\")", "test(\"^a\")");
+    check_format("keys_unsorted()", "keys_unsorted()");
+    check_format("min_by(.v)", "min_by(.v)");
+    check_format("max_by(.v)", "max_by(.v)");
+    check_format("fromjson()", "fromjson()");
+    check_format("tojson()", "tojson()");
+    check_format("$who", "$who");
+    check_format("$my_var", "$my_var");
 
     /* ---- query syntax errors ---- */
     check_query_fails("");
@@ -374,6 +381,11 @@ int main(void)
     check_query_fails("$.a | from_entries(1)");
     check_query_fails("$.a | reverse(1)");
     check_query_fails("$.a | test()");
+    check_query_fails("$.a | min_by()");
+    check_query_fails("$.a | max_by()");
+    check_query_fails("$.a | keys_unsorted(1)");
+    check_query_fails("$.a | fromjson(1)");
+    check_query_fails("$.a | tojson(1)");
 
     /* ---- evaluation ---- */
     const char *doc =
@@ -542,6 +554,38 @@ int main(void)
     check_eval("\"hello\"", "$ | test(\"^x\")", 0, "false\n");
     check_eval("\"hello\"", "$ | test(\"[aeiou]\")", 0, "true\n");
     check_eval("\"hello\"", "$ | test(\"(\")", 0, "");
+
+    /* ---- keys_unsorted / min_by / max_by / fromjson / tojson ---- */
+    check_eval("{\"b\":2,\"a\":1}", "$ | keys_unsorted()", 0,
+               "[\"b\",\"a\"]\n");
+    check_eval("{\"b\":2,\"a\":1}", "$ | keys()", 0, "[\"a\",\"b\"]\n");
+    check_eval("[{\"n\":\"a\",\"v\":3},{\"n\":\"b\",\"v\":1}]",
+               "$ | min_by(.v)", 0, "{\"n\":\"b\",\"v\":1}\n");
+    check_eval("[{\"n\":\"a\",\"v\":3},{\"n\":\"b\",\"v\":1}]",
+               "$ | max_by(.v)", 0, "{\"n\":\"a\",\"v\":3}\n");
+    check_eval("[3,1,2]", "$ | min_by(.)", 0, "1\n");
+    check_eval("[3,1,2]", "$ | max_by(.)", 0, "3\n");
+    check_eval("[]", "$ | min_by(.)", 0, "");
+    check_eval("\"{\\\"a\\\":1}\"", "$ | fromjson()", 0, "{\"a\":1}\n");
+    check_eval("\"  [1,2]  \"", "$ | fromjson()", 0, "[1,2]\n");
+    check_eval("\"not json\"", "$ | fromjson()", 0, "");
+    check_eval("\"{\\\"a\\\":1} trailing\"", "$ | fromjson()", 0, "");
+    check_eval("{\"b\":2,\"a\":[1,2]}", "$ | tojson()", 0,
+               "\"{\\\"b\\\":2,\\\"a\\\":[1,2]}\"\n");
+    check_eval("\"{\\\"a\\\":1}\"", "$ | fromjson() | tojson()", 0,
+               "\"{\\\"a\\\":1}\"\n");
+
+    /* ---- CLI variables ($name) ---- */
+    query_set_var("who", json_string_new("world"));
+    query_set_var("n", parse_or_die("42"));
+    query_set_var("obj", parse_or_die("{\"x\":[1,2]}"));
+    check_eval("null", "$who", 0, "\"world\"\n");
+    check_eval("null", "$n", 0, "42\n");
+    check_eval("null", "$obj", 0, "{\"x\":[1,2]}\n");
+    check_eval("{\"a\":1}", "$obj | .x | length()", 0, "2\n");
+    check_eval("null", "$missing", 0, "");
+    check_eval("null", "$who | length()", 0, "5\n");
+    check_eval("null", "$who | tojson()", 0, "\"\\\"world\\\"\"\n");
 
     printf("unit: %d checks, %d failures\n", g_checks, g_failures);
     return g_failures ? 1 : 0;

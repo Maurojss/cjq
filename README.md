@@ -1,6 +1,6 @@
 # cjq
 
-[![CI](https://github.com/mauroncfds/cjq/actions/workflows/ci.yml/badge.svg)](https://github.com/mauroncfds/cjq/actions/workflows/ci.yml)
+[![CI](https://github.com/Maurojss/cjq/actions/workflows/ci.yml/badge.svg)](https://github.com/Maurojss/cjq/actions/workflows/ci.yml)
 [![License: MIT](https://img.shields.io/badge/license-MIT-blue.svg)](LICENSE)
 ![C99](https://img.shields.io/badge/C-C99-informational)
 
@@ -32,7 +32,7 @@ $ curl -s https://api.example.dev/orders \
 | Runtime deps | libc + libm | libc + oniguruma (usually) |
 | Learning curve | small, path-oriented | large (full functional language) |
 | Startup time | µs | ms |
-| Query features | paths, slices, wildcards, comparisons, booleans, 32 builtins | everything, including modules |
+| Query features | paths, slices, wildcards, comparisons, booleans, 37 builtins | everything, including modules |
 
 If you already love jq's full language, use jq. cjq is for the 90% case: read
 a value, maybe walk an array, print it — with zero ceremony.
@@ -40,7 +40,7 @@ a value, maybe walk an array, print it — with zero ceremony.
 ## Install
 
 ```sh
-git clone https://github.com/mauroncfds/cjq.git
+git clone https://github.com/Maurojss/cjq.git
 cd cjq
 make                 # builds ./cjq
 make test            # unit + end-to-end tests
@@ -112,7 +112,34 @@ null
 $ echo '{"ok":false}' | ./cjq -e '$.ok'
 $ echo $?
 1
+
+# pass shell values into a query
+$ ./cjq -n --arg name Ada '$name'
+"Ada"
+$ ./cjq -n -c --argjson n 41 '$n'
+41
+
+# treat input as raw text: one line per result
+$ printf 'alpha\nbeta\n' | ./cjq -R -r .
+alpha
+beta
+
+# ...or as one string with -s
+$ printf 'alpha\nbeta\n' | ./cjq -R -s -r .
+alpha
+beta
 ```
+
+## Variables and raw input
+
+`--arg NAME VALUE` defines `$NAME` as a string; `--argjson NAME JSON`
+defines it as the parsed JSON value. A missing variable produces no result.
+Definitions are visible to the whole query, and the last definition of a name
+wins.
+
+`-R`/`--raw-input` skips JSON parsing: every line of input becomes a string
+(a trailing `\r` from CRLF files is removed), and the query runs once per
+line. With `-s`, the whole input becomes a single string instead.
 
 ## Query language
 
@@ -127,6 +154,7 @@ optionally piped into a builtin. Whitespace between steps is ignored.
 | `$.a[1:3]` | slice from 1 (inclusive) to 3 (exclusive) |
 | `$.a[1:]` / `$.a[:2]` | open-ended slices |
 | `$."two words"` | quoted member names |
+| `$name` | variable defined with `--arg` / `--argjson` |
 | `$.a[*]` or `$.a[]` | every array item / every object value |
 | `$.a?` | optional step: `null` when the step misses |
 | `$..uid` | every `uid` member, at any depth |
@@ -164,6 +192,7 @@ Notes on corner cases, by design:
 |---|---|
 | `length()` | string bytes, array/object item count, 0 for `null`, absolute value for numbers |
 | `keys()` | sorted member names as an array; with an argument, the member values in key order |
+| `keys_unsorted()` | member names in insertion order |
 | `values()` | member values (objects) or items (arrays) as an array |
 | `type()` | `"null"`, `"boolean"`, `"number"`, `"string"`, `"array"` or `"object"` |
 | `has("key")` | `true` when the current object has that member |
@@ -183,6 +212,9 @@ Notes on corner cases, by design:
 | `test(regex)` | POSIX extended regex test on a string |
 | `sort(field?)` | array sorted ascending; `field` selects the sort key |
 | `max(field?)` / `min(field?)` | the item with the greatest/smallest key |
+| `max_by(expr)` / `min_by(expr)` | the item whose `expr` key is greatest/smallest |
+| `fromjson()` | parse a JSON string into a value |
+| `tojson()` | render a value as a compact JSON string |
 | `sum(field?)` | sums numeric values (missing/non-numeric keys are skipped) |
 | `first()` / `last()` | first/last array item |
 | `floor()` `ceil()` `abs()` `sqrt()` | math on numbers |
@@ -201,6 +233,7 @@ else is truthy.
 | `-j`, `--join-output` | no newline after each result |
 | `-a`, `--ascii-output` | escape non-ASCII as `\uXXXX` (surrogate pairs) |
 | `-s`, `--slurp` | parse a stream of JSON values into one array |
+| `-R`, `--raw-input` | read raw text lines instead of JSON; with `-s`, one string |
 | `-e`, `--exit-status` | exit 1 when the result is falsy or empty |
 | `-n`, `--null-input` | query `null`; read no input |
 | `-C`, `--color` | force colors even when piped |
@@ -209,6 +242,8 @@ else is truthy.
 | `--tab` | pretty-print with one tab |
 | `-S`, `--sort-keys` | sort object keys in the output |
 | `-f`, `--from-file` | read the query from a file instead of the argument |
+| `--arg NAME VALUE` | define `$NAME` as the string `VALUE` |
+| `--argjson NAME JSON` | define `$NAME` as the parsed JSON value |
 | `-h`, `--help` | usage |
 | `-v`, `--version` | version |
 
@@ -269,16 +304,20 @@ checks that deep nesting is rejected instead of overflowing the stack.
 
 ## Roadmap
 
-- [ ] more builtins: `range()`, `max_by()`, `min_by()`
+- [ ] more builtins: `range()`, `path()`, `del()`
 - [ ] `match()` with capture offsets
 - [ ] Windows build (MSVC)
 - [x] `map()`, `add()`, `contains()`, `startswith()`, `endswith()`, `join()`, `split()`
 - [x] `unique()`, `group_by()`, `flatten()`, `to_entries()`
 - [x] `from_entries()`, `reverse()`, `test(regex)`
+- [x] `keys_unsorted()`, `min_by(expr)`, `max_by(expr)`
+- [x] `fromjson()`, `tojson()`
 - [x] comparisons inside `select()` (`select(.age > 21)`)
 - [x] boolean operators (`and`, `or`) inside `select()`
 - [x] `-a/--ascii-output`, `--tab`, `--indent n`
 - [x] `-S/--sort-keys` and `-f/--from-file`
+- [x] `--arg` / `--argjson` variables and `$name`
+- [x] `-R/--raw-input` line-oriented text mode
 - [x] random-input stress tests for the JSON parser
 - [x] tagged releases with Linux and macOS binaries
 
