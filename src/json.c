@@ -924,6 +924,11 @@ static void print_object(const json_value *o, FILE *out, int pretty, int depth)
 
 static void print_value(const json_value *v, FILE *out, int pretty, int depth)
 {
+    if (!v)
+    {
+        put_colored(out, CJQ_COLOR_NULL, "null");
+        return;
+    }
     switch (v->kind)
     {
     case JSON_NULL:

@@ -2,6 +2,20 @@
 
 All notable changes to this project are documented in this file.
 
+## [1.5.1] - 2026-11-12
+
+### Fixed
+
+- `make` no longer fails under GNU make 3.81 (macOS) because the version
+  lookup contained a `#` that the parser treated as a comment.
+- The `sanitizer` target now passes `-Isrc` when building the unit suite.
+- `print_value()` tolerates a NULL value instead of dereferencing it, which
+  also keeps newer GCC `-fanalyzer` builds clean.
+
+### Changed
+
+- Version is now 1.5.1.
+
 ## [1.5.0] - 2026-11-11
 
 ### Added

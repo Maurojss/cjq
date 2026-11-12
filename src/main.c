@@ -14,7 +14,7 @@
 #include <string.h>
 #include <unistd.h>
 
-#define CJQ_VERSION "1.5.0"
+#define CJQ_VERSION "1.5.1"
 
 #define EXIT_OK 0
 #define EXIT_FALSY 1

@@ -12,7 +12,7 @@ FISHCOMP ?= $(PREFIX)/share/fish/vendor_completions.d
 
 SRC := src/main.c src/json.c src/query.c
 OBJ := $(SRC:src/%.c=obj/%.o)
-VERSION := $(shell sed -n 's/^#define CJQ_VERSION "\([^"]*\)"/\1/p' src/main.c)
+VERSION := $(shell sed -n 's/.*CJQ_VERSION "\([^"]*\)".*/\1/p' src/main.c)
 TAG := v$(VERSION)
 
 all: cjq
@@ -70,7 +70,7 @@ sanitizer:
 	      -o build/cjq $(SRC) $(LDFLAGS) -lm
 	$(CC) -std=c11 -Wall -Wextra -Wpedantic -O1 -g \
 	      -fsanitize=address,undefined -fno-omit-frame-pointer \
-	      -o build/unit tests/unit.c src/json.c src/query.c $(LDFLAGS) -lm
+	      -Isrc -o build/unit tests/unit.c src/json.c src/query.c $(LDFLAGS) -lm
 	ASAN_OPTIONS="$(ASAN_OPTIONS)" UBSAN_OPTIONS="$(UBSAN_OPTIONS)" \
 	    ./build/unit
 	ASAN_OPTIONS="$(ASAN_OPTIONS)" UBSAN_OPTIONS="$(UBSAN_OPTIONS)" \
