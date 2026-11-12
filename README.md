@@ -32,7 +32,7 @@ $ curl -s https://api.example.dev/orders \
 | Runtime deps | libc + libm | libc + oniguruma (usually) |
 | Learning curve | small, path-oriented | large (full functional language) |
 | Startup time | µs | ms |
-| Query features | paths, slices, wildcards, comparisons, booleans, 44 builtins | everything, including modules |
+| Query features | paths, slices, wildcards, comparisons, booleans, 47 builtins | everything, including modules |
 
 If you already love jq's full language, use jq. cjq is for the 90% case: read
 a value, maybe walk an array, print it — with zero ceremony.
@@ -144,6 +144,18 @@ $ ./cjq -n --arg name Ada '$name'
 $ ./cjq -n -c --argjson n 41 '$n'
 41
 
+# generate numbers; ';' separates builtin arguments
+$ ./cjq -n -c 'range(3)'
+0
+1
+2
+
+# find a location and remove it from a copy
+$ echo '{"a":{"b":1,"c":2}}' | ./cjq -c 'path(.a.b)'
+["a","b"]
+$ echo '{"a":{"b":1,"c":2}}' | ./cjq -c 'del(.a.b)'
+{"a":{"c":2}}
+
 # treat input as raw text: one line per result
 $ printf 'alpha\nbeta\n' | ./cjq -R -r .
 alpha
@@ -249,7 +261,13 @@ Notes on corner cases, by design:
 | `tonumber()` | numeric string → number; anything else produces no result |
 | `ascii_downcase()` / `ascii_upcase()` | change ASCII letters only |
 | `ltrimstr(s)` / `rtrimstr(s)` | remove a prefix/suffix if present |
+| `range(n)` / `range(from; to; step?)` | emit numbers from `from` (default 0) up to `to` |
+| `path(expr)` | location of each value `expr` selects, as an array |
+| `del(expr)` | a copy of the input with the selected path(s) removed |
 | `not()` | truthiness negation |
+
+Builtin arguments are separated by `;`, so `range(0; 10; 2)` takes three
+arguments while `map(.a, .b)` still means "run either alternative".
 
 **Truthiness:** `null`, `false`, `0`, `""`, `[]` and `{}` are falsy; everything
 else is truthy.
@@ -346,7 +364,7 @@ including findings and residual risks.
 
 ## Roadmap
 
-- [ ] more builtins: `range()`, `path()`, `del()`
+- [x] more builtins: `range()`, `path()`, `del()`
 - [ ] Windows build (MSVC)
 - [x] `match()` with capture offsets
 - [x] `map()`, `add()`, `contains()`, `startswith()`, `endswith()`, `join()`, `split()`

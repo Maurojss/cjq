@@ -29,6 +29,8 @@ The scope of the latest local review, its threat model and its findings are in
 
 - JSON nesting is capped at 512 levels and query nesting at 256 levels, so
   hostile documents and queries fail cleanly instead of exhausting the stack.
+- `range()` emits at most one million numbers per call, bounding output from a
+  tiny step or a huge interval.
 - Strings containing `\u0000` are rejected with exit status 3 rather than
   silently truncated; the C-string model cannot represent embedded NUL safely.
 - CI workflows use least-privilege permissions, pinned Actions and a static

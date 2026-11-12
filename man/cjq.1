@@ -102,6 +102,11 @@ Builtins:
 .Ql ascii_upcase() ,
 .Ql ltrimstr(s) ,
 .Ql rtrimstr(s) ,
+.Ql range(n) ,
+.Ql range(from; to) ,
+.Ql range(from; to; step) ,
+.Ql path(expr) ,
+.Ql del(expr) ,
 .Ql sum(field?) ,
 .Ql first() ,
 .Ql last() ,
@@ -124,6 +129,24 @@ and a
 .Ql captures
 array; offsets count UTF-8 code points.
 An invalid pattern or a miss produces no result.
+.Pp
+Builtin arguments are separated by semicolons.
+.Ql range()
+emits numbers starting at
+.Ar from
+(default 0) while below
+.Ar to ,
+adding
+.Ar step
+(default 1).
+A zero step or a direction that never reaches
+.Ar to
+emits nothing, and at most one million numbers are emitted.
+.Ql path()
+returns the location of each value selected by its argument as an array of
+object keys and array indexes.
+.Ql del()
+returns a copy of the input with the selected paths removed.
 .Pp
 Values
 .Dv null ,

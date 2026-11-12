@@ -332,6 +332,8 @@ static void check_random_queries(void)
         "match(\"^[a-z]+$\")",
         "keys_unsorted()",
         "sort(.x)[-1]",
+        "range(0; 5; 2)",
+        "del(.a[0]; .b)",
     };
     const size_t seed_count = sizeof seeds / sizeof seeds[0];
     uint32_t state = 0x51ed270bu;
@@ -466,6 +468,9 @@ int main(void)
     check_format("ltrimstr(\"ab\")", "ltrimstr(\"ab\")");
     check_format("rtrimstr(\"ab\")", "rtrimstr(\"ab\")");
     check_format("match(\"^a\")", "match(\"^a\")");
+    check_format("range(0; 10; 2)", "range(0; 10; 2)");
+    check_format("path(.a.b)", "path(.a.b)");
+    check_format("del(.a; .b)", "del(.a; .b)");
 
     /* ---- query syntax errors ---- */
     check_query_fails("");
@@ -503,6 +508,9 @@ int main(void)
     check_query_fails("$.a | ltrimstr()");
     check_query_fails("$.a | rtrimstr()");
     check_query_fails("$.a | match()");
+    check_query_fails("$.a | range()");
+    check_query_fails("$.a | path()");
+    check_query_fails("$.a | del()");
 
     /* ---- evaluation ---- */
     const char *doc =
@@ -688,6 +696,38 @@ int main(void)
     check_eval("\"caf\xc3\xa9\"", "$ | match(\"\xc3\xa9\")", 0,
                "{\"offset\":3,\"length\":1,\"string\":\"\xc3\xa9\","
                "\"captures\":[]}\n");
+
+    /* ---- range / path / del ---- */
+    check_eval("null", "$ | range(4)", 0, "0\n1\n2\n3\n");
+    check_eval("null", "$ | range(2; 5)", 0, "2\n3\n4\n");
+    check_eval("null", "$ | range(0; 7; 3)", 0, "0\n3\n6\n");
+    check_eval("null", "$ | range(5; 0; -2)", 0, "5\n3\n1\n");
+    check_eval("null", "$ | range(0; 5; 0)", 0, "");
+    check_eval("null", "$ | range(3; 3)", 0, "");
+    check_eval("null", "$ | range(\"x\")", 0, "");
+    check_eval("null", "$ | range(0; 2; 2; 9)", 0, "");
+    check_eval("{\"a\":{\"b\":[10,20]}}", "$ | path(.a.b[1])", 0,
+               "[\"a\",\"b\",1]\n");
+    check_eval("{\"a\":[{\"x\":1},{\"x\":2}]}", "$ | path(.a[*].x)", 0,
+               "[\"a\",0,\"x\"]\n[\"a\",1,\"x\"]\n");
+    check_eval("{\"a\":{\"b\":1}}", "$ | path(.a | .b)", 0,
+               "[\"a\",\"b\"]\n");
+    check_eval("{\"a\":1,\"b\":2}", "$ | path(.a; .b)", 0,
+               "[\"a\"]\n[\"b\"]\n");
+    check_eval("{\"a\":1}", "$ | path(.z)", 0, "");
+    check_eval("{\"a\":1}", "$ | path(length())", 0, "");
+    check_eval("{\"a\":1,\"b\":2}", "$ | del(.a)", 0, "{\"b\":2}\n");
+    check_eval("{\"a\":[1,2,3]}", "$ | del(.a[1])", 0,
+               "{\"a\":[1,3]}\n");
+    check_eval("[0,1,2,3,4]", "$ | del([1]; [3])", 0, "[0,2,4]\n");
+    check_eval("[0,1,2,3,4]", "$ | del([1]; [2])", 0, "[0,3,4]\n");
+    check_eval("{\"a\":{\"b\":1,\"c\":2},\"d\":3}", "$ | del(.a.b)", 0,
+               "{\"a\":{\"c\":2},\"d\":3}\n");
+    check_eval("{\"a\":1}", "$ | del(.z)", 0, "{\"a\":1}\n");
+    check_eval("{\"a\":1}", "$ | del(.)", 0, "{\"a\":1}\n");
+    check_eval("[{\"x\":1,\"y\":1},{\"x\":2}]", "$ | del(.[*].x)", 0,
+               "[{\"y\":1},{}]\n");
+    check_eval("[1,2,3]", "$ | del([])", 0, "[]\n");
 
     /* ---- keys_unsorted / min_by / max_by / fromjson / tojson ---- */
     check_eval("{\"b\":2,\"a\":1}", "$ | keys_unsorted()", 0,

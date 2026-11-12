@@ -18,6 +18,9 @@
  *   select(.ok == true) comparisons inside builtin arguments
  *   $.a and $.b         boolean operators (and, or)
  *   $name               variable set by --arg / --argjson
+ *   range(0; 5)         builtin arguments are ';'-separated
+ *   path(.a[0])         location of a value
+ *   del(.a[0])          copy without the selected path
  */
 
 #include "json.h"
@@ -54,9 +57,9 @@ struct hnode
     char *name;   /* K_FIELD key, K_RECF key, K_CONST text, K_CALL builtin */
     hnode *kid;   /* K_OPT inner step, K_IDX query, K_CALL first arg,
                      K_ALT/K_PIPE first child, K_CMP left side */
+    hnode *arg;   /* K_CALL next argument (arguments are ';'-separated) */
     hnode *next;  /* next step in the same chain; NULL for K_ALT/K_PIPE */
-    hnode *alt;   /* sibling chains: K_ALT branches, K_PIPE stages,
-                     K_CALL further args */
+    hnode *alt;   /* sibling chains: K_ALT branches, K_PIPE stages */
     hnode *right; /* K_CMP right-hand side */
     long a, b;    /* K_IDX / K_SLICE bounds; LONG_MIN/MAX means "omitted";
                      K_CMP operator; K_LIT 0 null, 1 false, 2 true */

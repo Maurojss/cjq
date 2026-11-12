@@ -141,6 +141,14 @@ t match '$. | match("[a-z]+")' '"abc123"' \
 t match_capture '$. | match("([a-z]+)([0-9]+)")' '"abc123"' \
     '{"offset":0,"length":6,"string":"abc123","captures":[{"offset":0,"length":3,"string":"abc","name":null},{"offset":3,"length":3,"string":"123","name":null}]}' -c
 t match_none '$. | match("z")' '"abc"' '' -c
+t range_one 'range(4)' 'null' '0\n1\n2\n3' -c
+t range_two 'range(2; 5)' 'null' '2\n3\n4' -c
+t range_step 'range(0; 7; 3)' 'null' '0\n3\n6' -c
+t range_negative 'range(5; 0; -2)' 'null' '5\n3\n1' -c
+t path_nested 'path(.a.b[1])' '{"a":{"b":[10,20]}}' '["a","b",1]' -c
+t path_wildcard 'path(.a[*].x)' '{"a":[{"x":1},{"x":2}]}' '["a",0,"x"]\n["a",1,"x"]' -c
+t del_key 'del(.a)' '{"a":1,"b":2}' '{"b":2}' -c
+t del_index 'del(.a[1])' '{"a":[1,2,3]}' '{"a":[1,3]}' -c
 t sort_keys '$. ' '{"b":1,"a":2,"c":{"z":3,"y":4}}' \
     '{"a":2,"b":1,"c":{"y":4,"z":3}}' -S -c
 t ascii_output '$.s' '{"s":"caf\u00e9"}' '"caf\\u00e9"' -a -c
@@ -221,6 +229,9 @@ exit_code ascii_upcase_arity 4 '{}' "$BIN" '$. | ascii_upcase(1)'
 exit_code ltrimstr_arity 4 '{}' "$BIN" '$. | ltrimstr()'
 exit_code rtrimstr_arity 4 '{}' "$BIN" '$. | rtrimstr()'
 exit_code match_arity 4 '{}' "$BIN" '$. | match()'
+exit_code range_arity 4 '{}' "$BIN" '$. | range()'
+exit_code path_arity 4 '{}' "$BIN" '$. | path()'
+exit_code del_arity 4 '{}' "$BIN" '$. | del()'
 exit_code missing_query_file 2 '{}' "$BIN" -f /nonexistent/cjq-query '$.a'
 exit_code bad_indent 2 '{}' "$BIN" --indent 9 '$'
 exit_code bad_indent_empty 2 '{}' "$BIN" --indent= '$'

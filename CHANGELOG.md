@@ -2,6 +2,31 @@
 
 All notable changes to this project are documented in this file.
 
+## [1.5.0] - 2026-11-11
+
+### Added
+
+- `range(n)`, `range(from; to)` and `range(from; to; step)` emit a stream of
+  numbers.
+- `path(expr)` returns the location of each selected value as an array of
+  object keys and array indexes.
+- `del(expr)` returns a copy of the input with the selected paths removed;
+  multiple paths are accepted and index shifts are handled by deleting from
+  the end.
+- Builtin arguments are now separated by `;`, so multi-argument calls such as
+  `range(0; 10; 2)` parse correctly. Commas inside an argument remain the
+  alternative operator.
+
+### Security
+
+- `range()` stops after one million numbers, so a tiny step cannot exhaust
+  memory or run indefinitely.
+
+### Changed
+
+- Version is now 1.5.0.
+- `--help`, the README and the manual page document the new builtins.
+
 ## [1.4.0] - 2026-11-11
 
 ### Added

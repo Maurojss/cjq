@@ -299,7 +299,7 @@ static int builtin_kind(const char *name)
     static const char *const required[] = {
         "has", "select", "map", "contains", "startswith", "endswith", "join",
         "split", "group_by", "test", "match", "min_by", "max_by",
-        "ltrimstr", "rtrimstr", NULL};
+        "ltrimstr", "rtrimstr", "range", "path", "del", NULL};
     static const char *const optional[] = {"keys", "sort", "max", "min", "sum",
                                            NULL};
 
@@ -329,12 +329,12 @@ static hnode *parse_call(qparser_t *p, char *name)
             return NULL;
         n->kid = first;
         hnode *last = first;
-        while (q_accept(p, ','))
+        while (q_accept(p, ';'))
         {
             hnode *another = parse_subquery(p);
             if (!another)
                 return NULL;
-            last->alt = another;
+            last->arg = another;
             last = another;
         }
         if (!q_accept(p, ')'))
@@ -550,8 +550,9 @@ static hnode *parse_alt(qparser_t *p)
     {
         skip_blanks(p);
         char c = *p->cur;
-        if (c == '\0' || c == ',' || c == '|' || c == ')' || c == ']' ||
-            c == '}' || c == '<' || c == '>' || c == '=' || c == '!')
+        if (c == '\0' || c == ',' || c == ';' || c == '|' || c == ')' ||
+            c == ']' || c == '}' || c == '<' || c == '>' || c == '=' ||
+            c == '!')
             break;
         if (is_name_start(c) && (keyword_at(p, "and") || keyword_at(p, "or")))
             break;
@@ -757,6 +758,7 @@ void q_free(hnode *n)
     if (!n)
         return;
     q_free(n->kid);
+    q_free(n->arg);
     q_free(n->next);
     q_free(n->alt);
     q_free(n->right);
@@ -891,11 +893,11 @@ static void fmt_chain(sbuf_t *b, const hnode *n)
             sbuf_push(b, '(');
             const hnode *a = c->kid;
             int first = 1;
-            for (; a; a = a->alt)
+            for (; a; a = a->arg)
             {
                 if (!first)
                 {
-                    sbuf_push(b, ',');
+                    sbuf_push(b, ';');
                     sbuf_push(b, ' ');
                 }
                 fmt_chain(b, a);
@@ -1359,6 +1361,261 @@ static json_value *parse_json_text(const char *text)
     if (*end != '\0')
         return NULL;
     return v;
+}
+
+/* ---------------------- paths, range and del() -------------------------- */
+
+/* Upper bound for range() so a pathological step cannot allocate forever. */
+#define CJQ_MAX_RANGE 1000000
+
+typedef struct
+{
+    json_value *value;
+    json_value *path;
+} pentry_t;
+
+typedef struct
+{
+    pentry_t *v;
+    size_t n, cap;
+} presults_t;
+
+static void presults_push(presults_t *r, json_value *value, json_value *path)
+{
+    if (r->n == r->cap)
+    {
+        r->cap = r->cap ? 2 * r->cap : 8;
+        r->v = xrealloc(r->v, r->cap * sizeof *r->v);
+    }
+    r->v[r->n].value = value;
+    r->v[r->n].path = path;
+    r->n++;
+}
+
+/* Extend an immutable path array by one component. */
+static json_value *path_extend(const json_value *path, json_value *component)
+{
+    json_value *p = json_array_new();
+    for (size_t i = 0; i < path->count; ++i)
+        json_array_push(p, path->items[i]);
+    json_array_push(p, component);
+    return p;
+}
+
+/* Walk a path expression, tracking both the selected value and its location
+ * inside the original document.  Only navigational steps are supported:
+ * fields, indexes, wildcards, pipes and alternatives. */
+static void walk_paths(const hnode *n, json_value *val, json_value *path,
+                       presults_t *out)
+{
+    presults_t step = {NULL, 0, 0};
+
+    switch (n->kind)
+    {
+    case K_ROOT:
+    case K_DOT:
+        presults_push(&step, val, path);
+        break;
+    case K_FIELD:
+        if (val && val->kind == JSON_OBJECT)
+        {
+            json_value *m = json_try_get(val, n->name);
+            if (m)
+                presults_push(&step, m,
+                              path_extend(path, json_string_new(n->name)));
+        }
+        break;
+    case K_IDX:
+        if (n->kid)
+        {
+            results_t tmp = {0, 0, NULL};
+            collect(n->kid, val, &tmp);
+            for (size_t i = 0; i < tmp.n; ++i)
+            {
+                json_value *k = tmp.v[i];
+                if (k && k->kind == JSON_NUMBER && val &&
+                    val->kind == JSON_ARRAY)
+                {
+                    long idx = (long)k->number;
+                    json_value *found = index_array(val, idx);
+                    if (found)
+                    {
+                        long norm =
+                            idx < 0 ? idx + (long)val->count : idx;
+                        presults_push(
+                            &step, found,
+                            path_extend(path,
+                                        json_number_new((double)norm)));
+                    }
+                }
+                else if (k && k->kind == JSON_STRING && val &&
+                         val->kind == JSON_OBJECT)
+                {
+                    json_value *found = json_try_get(val, k->string);
+                    if (found)
+                        presults_push(
+                            &step, found,
+                            path_extend(path,
+                                        json_string_new(k->string)));
+                }
+            }
+            free(tmp.v);
+        }
+        else
+        {
+            json_value *found = index_array(val, n->a);
+            if (found)
+            {
+                long idx = n->a < 0 ? n->a + (long)val->count : n->a;
+                presults_push(&step, found,
+                              path_extend(path,
+                                          json_number_new((double)idx)));
+            }
+        }
+        break;
+    case K_WILD:
+        if (val && val->kind == JSON_ARRAY)
+            for (size_t i = 0; i < val->count; ++i)
+                presults_push(&step, val->items[i],
+                              path_extend(path,
+                                          json_number_new((double)i)));
+        else if (val && val->kind == JSON_OBJECT)
+            for (size_t i = 0; i < val->count; ++i)
+                presults_push(&step, val->items[i],
+                              path_extend(path,
+                                          json_string_new(val->keys[i])));
+        break;
+    case K_PIPE:
+    {
+        presults_t inputs = {NULL, 0, 0};
+        presults_push(&inputs, val, path);
+        for (const hnode *st = n->kid; st; st = st->alt)
+        {
+            presults_t next = {NULL, 0, 0};
+            for (size_t i = 0; i < inputs.n; ++i)
+                walk_paths(st, inputs.v[i].value, inputs.v[i].path,
+                           &next);
+            free(inputs.v);
+            inputs = next;
+        }
+        for (size_t i = 0; i < inputs.n; ++i)
+            presults_push(&step, inputs.v[i].value, inputs.v[i].path);
+        free(inputs.v);
+        break;
+    }
+    case K_ALT:
+        for (const hnode *br = n->kid; br; br = br->alt)
+            walk_paths(br, val, path, &step);
+        break;
+    default:
+        /* Calls, comparisons and recursive searches are not paths. */
+        break;
+    }
+
+    if (n->next)
+    {
+        for (size_t i = 0; i < step.n; ++i)
+            walk_paths(n->next, step.v[i].value, step.v[i].path, out);
+    }
+    else
+    {
+        for (size_t i = 0; i < step.n; ++i)
+            presults_push(out, step.v[i].value, step.v[i].path);
+    }
+    free(step.v);
+}
+
+static int path_cmp(const json_value *a, const json_value *b)
+{
+    size_t n = a->count < b->count ? a->count : b->count;
+    for (size_t i = 0; i < n; ++i)
+    {
+        const json_value *x = a->items[i];
+        const json_value *y = b->items[i];
+        if (x->kind == JSON_NUMBER && y->kind == JSON_NUMBER)
+        {
+            if (x->number < y->number)
+                return -1;
+            if (x->number > y->number)
+                return 1;
+        }
+        else if (x->kind == JSON_STRING && y->kind == JSON_STRING)
+        {
+            int c = strcmp(x->string, y->string);
+            if (c)
+                return c < 0 ? -1 : 1;
+        }
+        else if (x->kind != y->kind)
+            return x->kind < y->kind ? -1 : 1;
+    }
+    if (a->count == b->count)
+        return 0;
+    return a->count < b->count ? -1 : 1;
+}
+
+/* Delete later/deeper paths first so index shifts cannot invalidate them. */
+static int cmp_path_desc(const void *pa, const void *pb)
+{
+    const json_value *const *a = pa;
+    const json_value *const *b = pb;
+    return -path_cmp(*a, *b);
+}
+
+/* Remove one path from an owned copy.  Returns 1 when something was removed. */
+static int delete_path(json_value *root, const json_value *path)
+{
+    json_value *cur = root;
+    for (size_t i = 0; i < path->count; ++i)
+    {
+        const json_value *comp = path->items[i];
+        int last = i + 1 == path->count;
+        if (comp->kind == JSON_STRING)
+        {
+            if (!cur || cur->kind != JSON_OBJECT)
+                return 0;
+            size_t at = cur->count;
+            for (size_t j = 0; j < cur->count; ++j)
+                if (strcmp(cur->keys[j], comp->string) == 0)
+                {
+                    at = j;
+                    break;
+                }
+            if (at == cur->count)
+                return 0;
+            if (last)
+            {
+                for (size_t j = at; j + 1 < cur->count; ++j)
+                {
+                    cur->keys[j] = cur->keys[j + 1];
+                    cur->items[j] = cur->items[j + 1];
+                }
+                cur->count--;
+                return 1;
+            }
+            cur = cur->items[at];
+        }
+        else if (comp->kind == JSON_NUMBER)
+        {
+            if (!cur || cur->kind != JSON_ARRAY)
+                return 0;
+            long idx = (long)comp->number;
+            if (idx < 0)
+                idx += (long)cur->count;
+            if (idx < 0 || (size_t)idx >= cur->count)
+                return 0;
+            if (last)
+            {
+                for (size_t j = (size_t)idx; j + 1 < cur->count; ++j)
+                    cur->items[j] = cur->items[j + 1];
+                cur->count--;
+                return 1;
+            }
+            cur = cur->items[idx];
+        }
+        else
+            return 0;
+    }
+    return 0; /* the root itself cannot be deleted */
 }
 
 static void do_call(const hnode *call, json_value *val, results_t *outs)
@@ -2015,6 +2272,101 @@ static void do_call(const hnode *call, json_value *val, results_t *outs)
             else
                 results_push(outs, val);
         }
+        return;
+    }
+    if (strcmp(name, "range") == 0)
+    {
+        const hnode *a1 = call->kid;
+        const hnode *a2 = a1 ? a1->arg : NULL;
+        const hnode *a3 = a2 ? a2->arg : NULL;
+        if (!a1 || (a3 && a3->arg))
+            return;
+        json_value *v1 = eval_first(a1, val);
+        if (!v1 || v1->kind != JSON_NUMBER)
+            return;
+        double from = 0.0;
+        double to = v1->number;
+        double step = 1.0;
+        if (a2)
+        {
+            json_value *v2 = eval_first(a2, val);
+            if (!v2 || v2->kind != JSON_NUMBER)
+                return;
+            from = v1->number;
+            to = v2->number;
+            if (a3)
+            {
+                json_value *v3 = eval_first(a3, val);
+                if (!v3 || v3->kind != JSON_NUMBER)
+                    return;
+                step = v3->number;
+            }
+        }
+        if (!isfinite(from) || !isfinite(to) || !isfinite(step) ||
+            step == 0.0)
+            return;
+        if ((step > 0 && from >= to) || (step < 0 && from <= to))
+            return;
+        size_t emitted = 0;
+        for (double x = from; step > 0 ? x < to : x > to; x += step)
+        {
+            results_push(outs, json_number_new(x));
+            if (++emitted >= CJQ_MAX_RANGE)
+                break;
+        }
+        return;
+    }
+    if (strcmp(name, "path") == 0)
+    {
+        if (!val)
+            return;
+        for (const hnode *a = call->kid; a; a = a->arg)
+        {
+            presults_t found = {NULL, 0, 0};
+            walk_paths(a, val, json_array_new(), &found);
+            for (size_t i = 0; i < found.n; ++i)
+                results_push(outs, found.v[i].path);
+            free(found.v);
+        }
+        return;
+    }
+    if (strcmp(name, "del") == 0)
+    {
+        if (!arg || !val)
+            return;
+        json_value *copy = json_try_copy(val);
+        if (!copy)
+            return;
+
+        json_value **paths = NULL;
+        size_t npaths = 0, cap = 0;
+        for (const hnode *a = call->kid; a; a = a->arg)
+        {
+            presults_t found = {NULL, 0, 0};
+            walk_paths(a, val, json_array_new(), &found);
+            for (size_t i = 0; i < found.n; ++i)
+            {
+                if (found.v[i].path->count == 0)
+                    continue; /* cannot delete the root */
+                if (npaths == cap)
+                {
+                    cap = cap ? 2 * cap : 8;
+                    paths = xrealloc(paths, cap * sizeof *paths);
+                }
+                paths[npaths++] = found.v[i].path;
+            }
+            free(found.v);
+        }
+        if (npaths > 1)
+            qsort(paths, npaths, sizeof *paths, cmp_path_desc);
+        for (size_t i = 0; i < npaths; ++i)
+        {
+            if (i > 0 && path_cmp(paths[i - 1], paths[i]) == 0)
+                continue; /* the same path was selected twice */
+            delete_path(copy, paths[i]);
+        }
+        free(paths);
+        results_push(outs, copy);
         return;
     }
     if (strcmp(name, "not") == 0)
