@@ -56,6 +56,11 @@ ctest --test-dir build --output-on-failure
 sudo cmake --install build
 ```
 
+`make static` builds a fully static `build/cjq-static` — no libc/libm
+dependency, so the binary runs on any Linux regardless of the host's
+glibc (it needs the static archives; on Debian/Ubuntu that is the
+`libc6-dev` package).
+
 `make install PREFIX=$HOME/.local` works too, and
 `make install DESTDIR=/tmp/pkg` is ready for packaging. The man page is at
 `man/cjq.1` (`man ./man/cjq.1` without installing). Bash, zsh and fish

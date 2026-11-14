@@ -2,6 +2,13 @@
 
 All notable changes to this project are documented in this file.
 
+## [Unreleased]
+
+### Added
+
+- `make static` builds a fully static `build/cjq-static` that runs on any
+  Linux regardless of the host's glibc.
+
 ## [1.6.0] - 2026-11-14
 
 ### Added

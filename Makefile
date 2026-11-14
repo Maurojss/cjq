@@ -46,6 +46,19 @@ analyzer:
 	      -c -o build/analyzer/main.o src/main.c
 	@echo "analyzer: clean"
 
+# Fully static binary: no libc/libm dependency at runtime, so the result
+# runs on any Linux regardless of the host's glibc (useful for shipping
+# from a container or older/newer distro).  Needs the static archives
+# (libc.a, libm.a — on Debian/Ubuntu: libc6-dev).
+static:
+	@mkdir -p build
+	$(CC) -std=c11 -Wall -Wextra -Wpedantic -O2 -static \
+	      -o build/cjq-static $(SRC) $(LDFLAGS) -lm
+	@ldd build/cjq-static >/dev/null 2>&1 && \
+	    { echo "warning: build/cjq-static still links dynamically:" >&2; \
+	      ldd build/cjq-static >&2; } || true
+	@echo "built build/cjq-static"
+
 # Annotated release tag derived from CJQ_VERSION.
 tag:
 	@test -n "$(VERSION)" || { echo "cannot read CJQ_VERSION" >&2; exit 1; }
@@ -91,4 +104,4 @@ fmt:
 clean:
 	rm -rf obj cjq build tests/unit
 
-.PHONY: all test sanitizer analyzer tag install fmt clean
+.PHONY: all test sanitizer analyzer tag static install fmt clean
