@@ -330,6 +330,8 @@ static void check_random_queries(void)
         "$..id",
         "$name",
         "match(\"^[a-z]+$\")",
+        "gsub(\"[0-9]\"; \"-\")",
+        "limit(2; range(9))",
         "keys_unsorted()",
         "sort(.x)[-1]",
         "range(0; 5; 2)",
@@ -468,6 +470,9 @@ int main(void)
     check_format("ltrimstr(\"ab\")", "ltrimstr(\"ab\")");
     check_format("rtrimstr(\"ab\")", "rtrimstr(\"ab\")");
     check_format("match(\"^a\")", "match(\"^a\")");
+    check_format("sub(\"a\"; \"b\")", "sub(\"a\"; \"b\")");
+    check_format("gsub(\"a\"; \"b\")", "gsub(\"a\"; \"b\")");
+    check_format("limit(2; range(10))", "limit(2; range(10))");
     check_format("range(0; 10; 2)", "range(0; 10; 2)");
     check_format("path(.a.b)", "path(.a.b)");
     check_format("del(.a; .b)", "del(.a; .b)");
@@ -508,6 +513,9 @@ int main(void)
     check_query_fails("$.a | ltrimstr()");
     check_query_fails("$.a | rtrimstr()");
     check_query_fails("$.a | match()");
+    check_query_fails("$.a | sub(\"a\")");
+    check_query_fails("$.a | gsub(\"a\")");
+    check_query_fails("$.a | limit(2)");
     check_query_fails("$.a | range()");
     check_query_fails("$.a | path()");
     check_query_fails("$.a | del()");
@@ -697,6 +705,27 @@ int main(void)
                "{\"offset\":3,\"length\":1,\"string\":\"\xc3\xa9\","
                "\"captures\":[]}\n");
 
+    /* ---- sub / gsub ---- */
+    check_eval("\"v1.2.3\"", "$ | sub(\"^[a-z]+\"; \"release\")", 0,
+               "\"release1.2.3\"\n");
+    check_eval("\"a-b-c\"", "$ | sub(\"-\"; \"+\")", 0, "\"a+b-c\"\n");
+    check_eval("\"a-b-c\"", "$ | gsub(\"-\"; \"+\")", 0, "\"a+b+c\"\n");
+    check_eval("\"aaa\"", "$ | gsub(\"a\"; \"\")", 0, "\"\"\n");
+    check_eval("\"aaa\"", "$ | gsub(\"a*\"; \"X\")", 0, "\"XX\"\n");
+    check_eval("\"abc\"", "$ | gsub(\"^\"; \">\")", 0, "\">abc\"\n");
+    check_eval("\"abc\"", "$ | gsub(\"$\"; \"!\")", 0, "\"abc!\"\n");
+    check_eval("\"caf\xc3\xa9 x caf\xc3\xa9\"", "$ | gsub(\"\xc3\xa9\"; \"e\")",
+               0, "\"cafe x cafe\"\n");
+    check_eval("\"abc\"", "$ | sub(\"z\"; \"X\")", 0, "\"abc\"\n");
+    check_eval("\"abc\"", "$ | sub(\"(\"; \"X\")", 0, "");
+    check_eval("\"abc\"", "$ | gsub(\"b\"; 5)", 0, "");
+    check_eval("5", "$ | gsub(\"b\"; \"X\")", 0, "");
+    check_eval("\"abc\"", "$ | gsub(\"b\"; \"x\"; \"y\")", 0, "");
+    check_eval("\"a-b\"", "$ | gsub(\"[0-9]\"; \"#\")", 0, "\"a-b\"\n");
+    check_eval("\"a1b2\"", "$ | gsub(\"[0-9]\"; \"#\")", 0, "\"a#b#\"\n");
+    check_eval("\"hello world\"", "$ | gsub(\"o\"; \"0\") | ascii_upcase()",
+               0, "\"HELL0 W0RLD\"\n");
+
     /* ---- range / path / del ---- */
     check_eval("null", "$ | range(4)", 0, "0\n1\n2\n3\n");
     check_eval("null", "$ | range(2; 5)", 0, "2\n3\n4\n");
@@ -706,6 +735,13 @@ int main(void)
     check_eval("null", "$ | range(3; 3)", 0, "");
     check_eval("null", "$ | range(\"x\")", 0, "");
     check_eval("null", "$ | range(0; 2; 2; 9)", 0, "");
+    check_eval("null", "$ | limit(3; range(10))", 0, "0\n1\n2\n");
+    check_eval("null", "$ | limit(0; range(10))", 0, "");
+    check_eval("[1,2,3,4]", "$ | limit(2; .[])", 0, "1\n2\n");
+    check_eval("[1,2,3]", "$ | limit(99; .[])", 0, "1\n2\n3\n");
+    check_eval("[1,2,3]", "$ | limit(-1; .[])", 0, "");
+    check_eval("[1,2,3]", "$ | limit(\"x\"; .[])", 0, "");
+    check_eval("[1,2,3]", "$ | limit(2; .[]; .[])", 0, "");
     check_eval("{\"a\":{\"b\":[10,20]}}", "$ | path(.a.b[1])", 0,
                "[\"a\",\"b\",1]\n");
     check_eval("{\"a\":[{\"x\":1},{\"x\":2}]}", "$ | path(.a[*].x)", 0,

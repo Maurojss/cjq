@@ -287,7 +287,8 @@ static hnode *parse_subquery(qparser_t *p)
     return n;
 }
 
-/* 0 = unknown, 1 = takes no argument, 2 = requires one, 3 = optional. */
+/* 0 = unknown, 1 = takes no argument, 2 = requires one, 3 = optional,
+ * 4 = requires two. */
 static int builtin_kind(const char *name)
 {
     static const char *const no_args[] = {
@@ -302,6 +303,7 @@ static int builtin_kind(const char *name)
         "ltrimstr", "rtrimstr", "range", "path", "del", NULL};
     static const char *const optional[] = {"keys", "sort", "max", "min", "sum",
                                            NULL};
+    static const char *const two_args[] = {"sub", "gsub", "limit", NULL};
 
     for (const char *const *p = no_args; *p; ++p)
         if (!strcmp(name, *p))
@@ -312,6 +314,9 @@ static int builtin_kind(const char *name)
     for (const char *const *p = optional; *p; ++p)
         if (!strcmp(name, *p))
             return 3;
+    for (const char *const *p = two_args; *p; ++p)
+        if (!strcmp(name, *p))
+            return 4;
     return 0;
 }
 
@@ -354,6 +359,10 @@ static hnode *parse_call(qparser_t *p, char *name)
     case 2:
         if (!n->kid)
             return (qerr(p, "builtin requires an argument"), NULL);
+        break;
+    case 4:
+        if (!n->kid || !n->kid->arg)
+            return (qerr(p, "builtin requires two arguments"), NULL);
         break;
     case 3:
         break;
@@ -1948,6 +1957,55 @@ static void do_call(const hnode *call, json_value *val, results_t *outs)
         results_push(outs, out);
         return;
     }
+    if (strcmp(name, "sub") == 0 || strcmp(name, "gsub") == 0)
+    {
+        const hnode *a2 = arg ? arg->arg : NULL;
+        if (!arg || !a2 || a2->arg || !val || val->kind != JSON_STRING)
+            return;
+        json_value *pattern = eval_first(arg, val);
+        json_value *repl = eval_first(a2, val);
+        if (!pattern || pattern->kind != JSON_STRING)
+            return;
+        if (!repl || repl->kind != JSON_STRING)
+            return;
+        regex_t re;
+        if (regcomp(&re, pattern->string, REG_EXTENDED) != 0)
+            return;
+        const char *base = val->string;
+        size_t base_len = strlen(base);
+        sbuf_t out = {0, 0, 0};
+        size_t pos = 0;
+        int eflags = 0;
+        int global = (name[0] == 'g');
+        regmatch_t m;
+        while (pos <= base_len &&
+               regexec(&re, base + pos, 1, &m, eflags) == 0)
+        {
+            size_t so = pos + (size_t)m.rm_so;
+            size_t eo = pos + (size_t)m.rm_eo;
+            for (size_t i = pos; i < so; ++i)
+                sbuf_push(&out, base[i]);
+            sbuf_text(&out, repl->string);
+            pos = eo;
+            if (m.rm_so == m.rm_eo) /* empty match: step over one byte */
+            {
+                if (pos < base_len)
+                    sbuf_push(&out, base[pos++]);
+                else
+                    break;
+            }
+            if (!global)
+                break;
+            eflags = REG_NOTBOL;
+        }
+        for (size_t i = pos; i < base_len; ++i)
+            sbuf_push(&out, base[i]);
+        regfree(&re);
+        sbuf_push(&out, '\0');
+        results_push(outs, json_string_new(out.data));
+        free(out.data);
+        return;
+    }
     if (strcmp(name, "contains") == 0)
     {
         if (!arg || !val)
@@ -2173,6 +2231,23 @@ static void do_call(const hnode *call, json_value *val, results_t *outs)
             json_value *v = val->items[val->count - 1];
             results_push(outs, v);
         }
+        return;
+    }
+    if (strcmp(name, "limit") == 0)
+    {
+        const hnode *a2 = arg ? arg->arg : NULL;
+        if (!arg || !a2 || a2->arg || !val)
+            return;
+        json_value *nval = eval_first(arg, val);
+        if (!nval || nval->kind != JSON_NUMBER || !(nval->number >= 0) ||
+            nval->number > 1e9)
+            return;
+        size_t n = (size_t)nval->number;
+        results_t tmp = {0, 0, NULL};
+        collect(a2, val, &tmp);
+        for (size_t i = 0; i < tmp.n && i < n; ++i)
+            results_push(outs, tmp.v[i]);
+        free(tmp.v);
         return;
     }
     if (strcmp(name, "floor") == 0 || strcmp(name, "ceil") == 0 ||

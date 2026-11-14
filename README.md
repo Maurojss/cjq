@@ -32,7 +32,7 @@ $ curl -s https://api.example.dev/orders \
 | Runtime deps | libc + libm | libc + oniguruma (usually) |
 | Learning curve | small, path-oriented | large (full functional language) |
 | Startup time | µs | ms |
-| Query features | paths, slices, wildcards, comparisons, booleans, 47 builtins | everything, including modules |
+| Query features | paths, slices, wildcards, comparisons, booleans, 50 builtins | everything, including modules |
 
 If you already love jq's full language, use jq. cjq is for the 90% case: read
 a value, maybe walk an array, print it — with zero ceremony.
@@ -107,6 +107,18 @@ true
 # first regex match, with captures and codepoint offsets
 $ echo '"release-1.2.3"' | ./cjq -c '$. | match("([a-z]+)-([0-9.]+)")'
 {"offset":0,"length":13,"string":"release-1.2.3","captures":[{"offset":0,"length":7,"string":"release","name":null},{"offset":8,"length":5,"string":"1.2.3","name":null}]}
+
+# replace the first or every regex match
+$ echo '"v1.2.3"' | ./cjq -r '$. | sub("^v"; "release ")'
+release 1.2.3
+$ echo '"a-b-c"' | ./cjq -r '$. | gsub("-"; "_")'
+a_b_c
+
+# cap a stream: first N results only
+$ ./cjq -n -c 'limit(3; range(100))'
+0
+1
+2
 
 # convert values to strings, or numeric strings to numbers
 $ echo '[1,"two",null]' | ./cjq -c '$. | map(tostring())'
@@ -248,6 +260,8 @@ Notes on corner cases, by design:
 | `reverse()` | reverses an array or a UTF-8 string |
 | `test(regex)` | POSIX extended regex test on a string |
 | `match(regex)` | first regex match with byte-safe codepoint offsets and captures |
+| `sub(re; repl)` | string with the first regex match replaced by `repl` (inserted literally) |
+| `gsub(re; repl)` | string with every regex match replaced by `repl` (inserted literally) |
 | `sort(field?)` | array sorted ascending; `field` selects the sort key |
 | `max(field?)` / `min(field?)` | the item with the greatest/smallest key |
 | `max_by(expr)` / `min_by(expr)` | the item whose `expr` key is greatest/smallest |
@@ -262,6 +276,7 @@ Notes on corner cases, by design:
 | `ascii_downcase()` / `ascii_upcase()` | change ASCII letters only |
 | `ltrimstr(s)` / `rtrimstr(s)` | remove a prefix/suffix if present |
 | `range(n)` / `range(from; to; step?)` | emit numbers from `from` (default 0) up to `to` |
+| `limit(n; expr)` | at most the first `n` results of `expr` |
 | `path(expr)` | location of each value `expr` selects, as an array |
 | `del(expr)` | a copy of the input with the selected path(s) removed |
 | `not()` | truthiness negation |
@@ -380,6 +395,7 @@ including findings and residual risks.
 - [x] `-R/--raw-input` line-oriented text mode
 - [x] `tostring()`, `tonumber()`, `ascii_downcase()`, `ascii_upcase()`, `ltrimstr()`, `rtrimstr()`
 - [x] `match(regex)` with capture offsets
+- [x] `sub()` / `gsub()` regex substitution and `limit(n; expr)`
 - [x] random-input stress tests for the JSON parser
 - [x] random and mutated query stress tests for the query parser
 - [x] static analysis in CI and a local security review under `security/`

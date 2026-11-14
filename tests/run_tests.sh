@@ -141,6 +141,16 @@ t match '$. | match("[a-z]+")' '"abc123"' \
 t match_capture '$. | match("([a-z]+)([0-9]+)")' '"abc123"' \
     '{"offset":0,"length":6,"string":"abc123","captures":[{"offset":0,"length":3,"string":"abc","name":null},{"offset":3,"length":3,"string":"123","name":null}]}' -c
 t match_none '$. | match("z")' '"abc"' '' -c
+t sub_prefix '$. | sub("^[a-z]+"; "release")' '"v1.2.3"' '"release1.2.3"' -c
+t sub_first '$. | sub("-"; "+")' '"a-b-c"' '"a+b-c"' -c
+t gsub_all '$. | gsub("-"; "+")' '"a-b-c"' '"a+b+c"' -c
+t gsub_none '$. | gsub("z"; "X")' '"abc"' '"abc"' -c
+t gsub_anchor_start '$. | gsub("^"; ">")' '"abc"' '">abc"' -c
+t gsub_anchor_end '$. | gsub("$"; "!")' '"abc"' '"abc!"' -c
+t gsub_empty_pattern '$. | gsub("a*"; "X")' '"aaa"' '"XX"' -c
+t limit_stream 'limit(3; range(100))' 'null' '0\n1\n2' -c
+t limit_zero 'limit(0; range(100))' 'null' '' -c
+t limit_array 'limit(2; .[])' '[1,2,3,4]' '1\n2' -c
 t range_one 'range(4)' 'null' '0\n1\n2\n3' -c
 t range_two 'range(2; 5)' 'null' '2\n3\n4' -c
 t range_step 'range(0; 7; 3)' 'null' '0\n3\n6' -c
@@ -229,6 +239,9 @@ exit_code ascii_upcase_arity 4 '{}' "$BIN" '$. | ascii_upcase(1)'
 exit_code ltrimstr_arity 4 '{}' "$BIN" '$. | ltrimstr()'
 exit_code rtrimstr_arity 4 '{}' "$BIN" '$. | rtrimstr()'
 exit_code match_arity 4 '{}' "$BIN" '$. | match()'
+exit_code sub_arity 4 '{}' "$BIN" '$. | sub("a")'
+exit_code gsub_arity 4 '{}' "$BIN" '$. | gsub("a")'
+exit_code limit_arity 4 '{}' "$BIN" '$. | limit(2)'
 exit_code range_arity 4 '{}' "$BIN" '$. | range()'
 exit_code path_arity 4 '{}' "$BIN" '$. | path()'
 exit_code del_arity 4 '{}' "$BIN" '$. | del()'

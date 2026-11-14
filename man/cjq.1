@@ -89,6 +89,8 @@ Builtins:
 .Ql reverse() ,
 .Ql test(regex) ,
 .Ql match(regex) ,
+.Ql sub(re; repl) ,
+.Ql gsub(re; repl) ,
 .Ql fromjson() ,
 .Ql tojson() ,
 .Ql sort(field?) ,
@@ -105,6 +107,7 @@ Builtins:
 .Ql range(n) ,
 .Ql range(from; to) ,
 .Ql range(from; to; step) ,
+.Ql limit(n; expr) ,
 .Ql path(expr) ,
 .Ql del(expr) ,
 .Ql sum(field?) ,
@@ -129,6 +132,13 @@ and a
 .Ql captures
 array; offsets count UTF-8 code points.
 An invalid pattern or a miss produces no result.
+.Ql sub()
+replaces the first regex match and
+.Ql gsub()
+replaces every match; the replacement is inserted literally, with no capture
+references.
+An invalid pattern or a non-string argument produces no result, and an empty
+match steps over one character instead of looping.
 .Pp
 Builtin arguments are separated by semicolons.
 .Ql range()
@@ -142,6 +152,12 @@ adding
 A zero step or a direction that never reaches
 .Ar to
 emits nothing, and at most one million numbers are emitted.
+.Ql limit()
+evaluates its second argument and emits at most the first
+.Ar n
+results; a negative
+.Ar n
+emits nothing.
 .Ql path()
 returns the location of each value selected by its argument as an array of
 object keys and array indexes.

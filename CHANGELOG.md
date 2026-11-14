@@ -2,6 +2,24 @@
 
 All notable changes to this project are documented in this file.
 
+## [1.6.0] - 2026-11-14
+
+### Added
+
+- `sub(re; repl)` replaces the first POSIX extended regex match in a string
+  with the literal replacement `repl`.
+- `gsub(re; repl)` replaces every match; an empty match steps over one
+  character instead of looping.
+- `limit(n; expr)` emits at most the first `n` results of `expr`
+  (`limit(3; range(100))` yields `0`, `1`, `2`).
+- Builtins that take exactly two arguments (`sub`, `gsub`, `limit`) are now
+  arity-checked at parse time with a dedicated diagnostic.
+
+### Changed
+
+- Version is now 1.6.0.
+- `--help`, the README and the manual page document the new builtins.
+
 ## [1.5.1] - 2026-11-12
 
 ### Fixed
